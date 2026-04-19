@@ -1,0 +1,11 @@
+# ides
+.vscode/
+
+# wrangler
+.wrangler/
+
+# js/ts
+node_modules/
+
+# agents
+AGENTS.md
