@@ -26,7 +26,9 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	go.starlark.net v0.0.0-20260326113308-fadfc96def35 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )

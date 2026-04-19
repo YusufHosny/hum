@@ -52,33 +52,52 @@ export class SignalingServer implements DurableObject {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-		let data: {
-			type: string;
-			from: string;
-			to: string;
-		};
+	parseMessage(message: string) {
+		let data: any;
 		try {
-			data = JSON.parse(message as string);
+			data = JSON.parse(message);
 		} catch (e) {
-			return ws.send(JSON.stringify({ type: "error", error: "Invalid JSON format" }));
+			throw new Error("Invalid JSON format");
 		}
 
-		const [sendername] = this.state.getTags(ws);
-		if (data.to) {
-			const recipients = this.state.getWebSockets(data.to);
-
-			if (recipients.length === 0)
-				return ws.send(JSON.stringify({ type: "error", error: "Requested recepient not found" }));
-			if (recipients.length > 1)
-				return ws.send(JSON.stringify({ type: "error", error: "Multiple users with this name found (Critical Internal Error)" }));
-			if (data.from !== sendername)
-				return ws.send(JSON.stringify({ type: "error", error: "Message 'from' name does not match sender (Impersonation Protection)" }));
-
-			return recipients[0].send(JSON.stringify(data));
+		if (typeof data !== 'object' || data === null) {
+			throw new Error("Invalid payload format");
 		}
-		else if (data.type === "broadcast") {
-			return this.broadcast(data, sendername);
+
+		if (data.type !== undefined && typeof data.type !== 'string') throw new Error("Invalid type field");
+		if (data.from !== undefined && typeof data.from !== 'string') throw new Error("Invalid from field");
+		if (data.to !== undefined && typeof data.to !== 'string') throw new Error("Invalid to field");
+
+		return data;
+	}
+
+	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+		try {
+			if (typeof message !== 'string') {
+				ws.send(JSON.stringify({ type: "error", error: "Binary messages not supported" }));
+				return;
+			}
+			const data = this.parseMessage(message as string)
+			const [sendername] = this.state.getTags(ws);
+			if (data.to) {
+				const recipients = this.state.getWebSockets(data.to);
+
+				if (recipients.length === 0)
+					throw new Error("Requested recepient not found");
+				if (recipients.length > 1)
+					throw new Error("Multiple users with this name found (Critical Internal Error)");
+				if (data.from !== sendername)
+					throw new Error("Message 'from' name does not match sender (Impersonation Protection)");
+
+				return recipients[0].send(JSON.stringify(data));
+			}
+			else if (data.type === "broadcast") {
+				return this.broadcast(data, sendername);
+			}
+		} catch (e) {
+			if (e instanceof Error) {
+				ws.send(JSON.stringify({ type: "error", error: e.message }))
+			}
 		}
 	}
 
