@@ -41,8 +41,11 @@ func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	if label != "chat-text" && label != "chat-metadata" {
 		panic(fmt.Errorf("Unexpected data channel label: %v\n", label))
 	}
+	msgType := DataChannelLabelRMap[label]
 
 	dataChannel.OnOpen(func() {
+		member.dataChannelsMux.Lock()
+		defer member.dataChannelsMux.Unlock()
 		if index := slices.IndexFunc(member.dataChannels, func(dc *webrtc.DataChannel) bool { return dc.Label() == label }); index != -1 {
 			member.dataChannels[index] = dataChannel
 		} else {
@@ -51,7 +54,7 @@ func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	})
 
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		member.chatPipe.Receive(msg.Data, "message")
+		member.chatPipe.Receive(msg.Data, msgType)
 	})
 }
 
@@ -60,7 +63,14 @@ var DataChannelLabelMap = map[string]string{
 	"metadata": "chat-metadata",
 }
 
+var DataChannelLabelRMap = map[string]string{
+	"chat-text":     "message",
+	"chat-metadata": "metadata",
+}
+
 func (member *MeshMember) findDataChannel(label string) (*webrtc.DataChannel, bool) {
+	member.dataChannelsMux.Lock()
+	defer member.dataChannelsMux.Unlock()
 	for _, dc := range member.dataChannels {
 		if dc.Label() == label {
 			return dc, true

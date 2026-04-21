@@ -68,7 +68,11 @@ func NewMeshManager(
 	}
 
 	manager.chatPipe.SetSendHandler(func(ce chat.ChatEnvelope) {
-		for _, member := range manager.members {
+		manager.membersMux.Lock()
+		currentMembers := append([]*MeshMember(nil), manager.members...)
+		manager.membersMux.Unlock()
+
+		for _, member := range currentMembers {
 			member.chatPipe.SendEnvelope(ce)
 		}
 	})
@@ -89,8 +93,12 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 		return nil, err
 	}
 
+	memberCtx, memberCancel := context.WithCancel(manager.ctx)
+
 	member := &MeshMember{
 		meshContext:       manager,
+		ctx:               memberCtx,
+		cancel:            memberCancel,
 		username:          username,
 		connection:        peerConnection,
 		chatPipe:          chat.NewChatPipe(),
@@ -118,7 +126,7 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 		member.meshContext.getChatPipe().ReceiveEnvelope(ce)
 	})
 
-	go member.chatPipe.Process(manager.ctx)
+	go member.chatPipe.Process(member.ctx)
 
 	if manager.shouldSendOffer(member) {
 		_, err := member.createDataChannel("chat-text", nil)

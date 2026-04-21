@@ -83,7 +83,7 @@ export class SignalingServer implements DurableObject {
 				const recipients = this.state.getWebSockets(data.to);
 
 				if (recipients.length === 0)
-					throw new Error("Requested recepient not found");
+					throw new Error("Requested recipient not found");
 				if (recipients.length > 1)
 					throw new Error("Multiple users with this name found (Critical Internal Error)");
 				if (data.from !== sendername)

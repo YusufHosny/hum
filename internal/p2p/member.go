@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"log"
 	"sync"
 
@@ -24,12 +25,15 @@ type MeshContext interface {
 // handles sending SDP/ICE, politeness, and communication
 type MeshMember struct {
 	meshContext MeshContext
+	ctx         context.Context
+	cancel      context.CancelFunc
 
 	username   string // peer username
 	connection *webrtc.PeerConnection
 
-	chatPipe *chat.ChatPipe
-	dataChannels []*webrtc.DataChannel
+	chatPipe        *chat.ChatPipe
+	dataChannelsMux sync.Mutex
+	dataChannels    []*webrtc.DataChannel
 
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
@@ -45,6 +49,9 @@ type MeshMember struct {
 
 func (member *MeshMember) Close() error {
 	member.closeOnce.Do(func() {
+		if member.cancel != nil {
+			member.cancel()
+		}
 		close(member.done)
 	})
 
