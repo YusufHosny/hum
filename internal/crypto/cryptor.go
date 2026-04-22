@@ -44,29 +44,44 @@ func NewCryptor(channel string, passkey string) (*Cryptor, error) {
 }
 
 // output format: [24-byte nonce][ciphertext + MAC]
-func (c *Cryptor) Encrypt(packet []byte) ([]byte, error) {
-	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate random nonce: %w", err)
+func (c *Cryptor) Encrypt(packet []byte, nonce []byte) ([]byte, error) {
+	var plaintext []byte
+	var buffer []byte
+	if nonce == nil {
+		nonce = make([]byte, c.aead.NonceSize())
+		if _, err := rand.Read(nonce); err != nil {
+			return nil, fmt.Errorf("failed to generate random nonce: %w", err)
+		}
+
+		plaintext = make([]byte, len(nonce), len(nonce)+len(packet)+c.aead.Overhead())
+		copy(plaintext, nonce)
+		buffer = plaintext[:len(nonce)]
+
+	} else if len(nonce) != c.aead.NonceSize() {
+		return nil, errors.New("Invalid Nonce Length")
+	} else {
+		buffer = make([]byte, 0, len(packet)+c.aead.Overhead())
 	}
 
-	ciphertext := make([]byte, len(nonce), len(nonce)+len(packet)+c.aead.Overhead())
-	copy(ciphertext, nonce)
-
-	ciphertext = c.aead.Seal(ciphertext[:len(nonce)], nonce, packet, nil)
+	ciphertext := c.aead.Seal(buffer, nonce, packet, nil)
 
 	return ciphertext, nil
 }
 
-func (c *Cryptor) Decrypt(packet []byte) ([]byte, error) {
+func (c *Cryptor) Decrypt(packet []byte, nonce []byte) ([]byte, error) {
 	nonceSize := c.aead.NonceSize()
 
 	if len(packet) < nonceSize {
 		return nil, ErrInvalidPacketSize
 	}
 
-	nonce := packet[:nonceSize]
-	ciphertext := packet[nonceSize:]
+	ciphertext := packet
+	if nonce == nil {
+		nonce = packet[:nonceSize]
+		ciphertext = packet[nonceSize:]
+	} else if len(nonce) != c.aead.NonceSize() {
+		return nil, errors.New("Invalid Nonce Length")
+	}
 
 	plaintext, err := c.aead.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
