@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -8,8 +9,10 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/YusufHosny/hum/internal/chat"
 	"github.com/YusufHosny/hum/internal/p2p"
 )
 
@@ -45,7 +48,7 @@ func main() {
 
 	go func() {
 		sig := <-sigs
-		log.Printf("Received signal: %v. Shutting down...", sig)
+		log.Printf("\nReceived signal: %v. Shutting down...", sig)
 		cancel()
 	}()
 
@@ -54,7 +57,33 @@ func main() {
 		log.Fatalf("Failed to initialize MeshManager: %v", err)
 	}
 
-	log.Println("Peer is running. Press Ctrl+C to exit.")
+	chatPipe := manager.GetChatPipe()
+
+	// Handle incoming messages
+	chatPipe.SetRecvHandler(func(env chat.ChatEnvelope) {
+		if env.Type == "message" {
+			// Print over current line to somewhat handle interleaved typing
+			fmt.Printf("\r\033[K[%s]: %s\n> ", env.From, string(env.Content))
+		}
+	})
+
+	log.Println("Peer is running. Type a message and press Enter to send.")
+
+	// Start reading from stdin
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		fmt.Print("> ")
+		for scanner.Scan() {
+			text := strings.TrimSpace(scanner.Text())
+			if text != "" {
+				chatPipe.SendMessage(text)
+			}
+			fmt.Print("> ")
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("Error reading standard input: %v", err)
+		}
+	}()
 
 	<-ctx.Done()
 

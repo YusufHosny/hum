@@ -62,7 +62,6 @@ var DataChannelLabelMap = map[string]string{
 	"message":  "chat-text",
 	"metadata": "chat-metadata",
 }
-
 var DataChannelLabelRMap = map[string]string{
 	"chat-text":     "message",
 	"chat-metadata": "metadata",

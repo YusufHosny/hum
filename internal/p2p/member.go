@@ -7,7 +7,7 @@ import (
 
 	"github.com/pion/webrtc/v4"
 
-	"github.com/YusufHosny/hum/chat"
+	"github.com/YusufHosny/hum/internal/chat"
 )
 
 // ---------------  types ---------------
@@ -18,7 +18,7 @@ type MeshContext interface {
 	sendAnswer(member *MeshMember) error
 	sendCandidate(member *MeshMember, candidate *webrtc.ICECandidate) error
 
-	getChatPipe() *chat.ChatPipe
+	GetChatPipe() *chat.ChatPipe
 }
 
 // a single p2p connection to another user

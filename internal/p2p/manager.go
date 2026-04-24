@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v4"
 
-	"github.com/YusufHosny/hum/chat"
+	"github.com/YusufHosny/hum/internal/chat"
 )
 
 // manages and orchestrates all communication
@@ -52,28 +52,24 @@ func NewMeshManager(
 	ctx, cancel := context.WithCancel(ctx)
 
 	manager := &MeshManager{
-		ctx:    ctx,
-		cancel: cancel,
-
+		ctx:                ctx,
+		cancel:             cancel,
 		signalingServerUrl: signalingServerUrl,
 		ws:                 nil,
-
-		username:    username,
-		channelName: channelName,
-
-		chatPipe: chat.NewChatPipe(),
-
-		webrtcConfig: config,
-		members:      make([]*MeshMember, 0),
+		username:           username,
+		channelName:        channelName,
+		chatPipe:           chat.NewChatPipe(username),
+		webrtcConfig:       config,
+		members:            make([]*MeshMember, 0),
 	}
 
 	manager.chatPipe.SetSendHandler(func(ce chat.ChatEnvelope) {
 		manager.membersMux.Lock()
-		currentMembers := append([]*MeshMember(nil), manager.members...)
+		currentMembers := slices.Clone(manager.members)
 		manager.membersMux.Unlock()
 
 		for _, member := range currentMembers {
-			member.chatPipe.SendEnvelope(ce)
+			member.chatPipe.PassSendEnvelope(ce)
 		}
 	})
 
@@ -101,7 +97,7 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 		cancel:            memberCancel,
 		username:          username,
 		connection:        peerConnection,
-		chatPipe:          chat.NewChatPipe(),
+		chatPipe:          chat.NewChatPipe(username),
 		dataChannels:      make([]*webrtc.DataChannel, 0),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
 		done:              make(chan struct{}),
@@ -122,8 +118,7 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 		}
 	})
 	member.chatPipe.SetRecvHandler(func(ce chat.ChatEnvelope) {
-		ce.From = member.username
-		member.meshContext.getChatPipe().ReceiveEnvelope(ce)
+		member.meshContext.GetChatPipe().PassRecvEnvelope(ce)
 	})
 
 	go member.chatPipe.Process(member.ctx)
@@ -158,7 +153,7 @@ func (manager *MeshManager) Close() error {
 		manager.cancel()
 
 		manager.membersMux.Lock()
-		currentMembers := append([]*MeshMember(nil), manager.members...)
+		currentMembers := slices.Clone(manager.members)
 		manager.membersMux.Unlock()
 
 		errOccurred := false
@@ -219,6 +214,6 @@ func (manager *MeshManager) getOrCreateMemberByName(name string) (*MeshMember, e
 	return m, nil
 }
 
-func (manager *MeshManager) getChatPipe() *chat.ChatPipe {
+func (manager *MeshManager) GetChatPipe() *chat.ChatPipe {
 	return manager.chatPipe
 }

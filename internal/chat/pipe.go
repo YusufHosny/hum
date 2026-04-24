@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 )
 
 type ChatEnvelope struct {
-	Type    string // "message", "metadata"
-	From    string
-	Content []byte
+	Type      string // "message", "metadata"
+	From      string
+	Content   []byte
+	CreatedAt time.Time
 }
 
 type MetadataPayload struct {
@@ -17,6 +19,8 @@ type MetadataPayload struct {
 }
 
 type ChatPipe struct {
+	username string
+
 	sendChannel chan ChatEnvelope
 	recvChannel chan ChatEnvelope
 
@@ -24,8 +28,9 @@ type ChatPipe struct {
 	recvHandler func(ChatEnvelope)
 }
 
-func NewChatPipe() *ChatPipe {
+func NewChatPipe(username string) *ChatPipe {
 	return &ChatPipe{
+		username:    username,
 		sendChannel: make(chan ChatEnvelope, 100),
 		recvChannel: make(chan ChatEnvelope, 100),
 	}
@@ -39,16 +44,21 @@ func (pipe *ChatPipe) SetRecvHandler(handler func(ChatEnvelope)) {
 	pipe.recvHandler = handler
 }
 
-func (pipe *ChatPipe) SendEnvelope(ce ChatEnvelope) {
+func (pipe *ChatPipe) PassSendEnvelope(ce ChatEnvelope) {
 	pipe.sendChannel <- ce
 }
 
-func (pipe *ChatPipe) ReceiveEnvelope(ce ChatEnvelope) {
+func (pipe *ChatPipe) PassRecvEnvelope(ce ChatEnvelope) {
 	pipe.recvChannel <- ce
 }
 
 func (pipe *ChatPipe) SendMessage(message string) {
-	pipe.sendChannel <- ChatEnvelope{Type: "message", Content: []byte(message)}
+	pipe.sendChannel <- ChatEnvelope{
+		Type:      "message",
+		From:      pipe.username,
+		Content:   []byte(message),
+		CreatedAt: time.Now(),
+	}
 }
 
 func (pipe *ChatPipe) NotifyTyping() {
@@ -57,11 +67,21 @@ func (pipe *ChatPipe) NotifyTyping() {
 		log.Printf("Failed to marshal metadata: %v\n", err)
 		return
 	}
-	pipe.sendChannel <- ChatEnvelope{Type: "metadata", Content: payload}
+	pipe.sendChannel <- ChatEnvelope{
+		Type:      "metadata",
+		From:      pipe.username,
+		Content:   payload,
+		CreatedAt: time.Now(),
+	}
 }
 
 func (pipe *ChatPipe) Receive(content []byte, msgType string) {
-	pipe.recvChannel <- ChatEnvelope{Type: msgType, Content: content}
+	pipe.recvChannel <- ChatEnvelope{
+		Type:      msgType,
+		From:      pipe.username,
+		Content:   content,
+		CreatedAt: time.Now(),
+	}
 }
 
 func (pipe *ChatPipe) Process(ctx context.Context) {
