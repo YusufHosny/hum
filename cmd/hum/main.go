@@ -52,20 +52,24 @@ func main() {
 		cancel()
 	}()
 
-	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName)
+	chatManager := chat.NewChatManager(ctx)
+
+	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName, chatManager)
 	if err != nil {
 		log.Fatalf("Failed to initialize MeshManager: %v", err)
 	}
 
-	chatPipe := manager.GetChatPipe()
+	subChan := chatManager.Subscribe()
 
 	// Handle incoming messages
-	chatPipe.SetRecvHandler(func(env chat.ChatEnvelope) {
-		if env.Type == "message" {
-			// Print over current line to somewhat handle interleaved typing
-			fmt.Printf("\r\033[K[%s]: %s\n> ", env.From, string(env.Content))
+	go func() {
+		for env := range subChan {
+			if env.Type == "message" {
+				// Print over current line to somewhat handle interleaved typing
+				fmt.Printf("\r\033[K[%s]: %s\n> ", env.From, string(env.Content))
+			}
 		}
-	})
+	}()
 
 	log.Println("Peer is running. Type a message and press Enter to send.")
 
@@ -76,7 +80,7 @@ func main() {
 		for scanner.Scan() {
 			text := strings.TrimSpace(scanner.Text())
 			if text != "" {
-				chatPipe.SendMessage(text)
+				chatManager.SendMessage(*username, text)
 			}
 			fmt.Print("> ")
 		}

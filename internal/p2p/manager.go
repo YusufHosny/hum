@@ -24,10 +24,11 @@ type MeshManager struct {
 	wsMux              sync.Mutex
 	ws                 *websocket.Conn
 
+	inbox  chan<- *chat.ChatEnvelope
+	outbox <-chan *chat.ChatEnvelope
+
 	username    string // self username
 	channelName string
-
-	chatPipe *chat.ChatPipe
 
 	webrtcConfig webrtc.Configuration
 	membersMux   sync.Mutex
@@ -40,6 +41,7 @@ func NewMeshManager(
 	signalingServerUrl url.URL,
 	username string,
 	channelName string,
+	chatManager *chat.ChatManager,
 ) (*MeshManager, error) {
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -50,37 +52,46 @@ func NewMeshManager(
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	inbox, outbox := chatManager.GetInboxOutbox()
 
 	manager := &MeshManager{
 		ctx:                ctx,
 		cancel:             cancel,
 		signalingServerUrl: signalingServerUrl,
 		ws:                 nil,
+		inbox:              inbox,
+		outbox:             outbox,
 		username:           username,
 		channelName:        channelName,
-		chatPipe:           chat.NewChatPipe(username),
 		webrtcConfig:       config,
 		members:            make([]*MeshMember, 0),
 	}
 
-	manager.chatPipe.SetSendHandler(func(ce chat.ChatEnvelope) {
-		manager.membersMux.Lock()
-		currentMembers := slices.Clone(manager.members)
-		manager.membersMux.Unlock()
-
-		for _, member := range currentMembers {
-			member.chatPipe.PassSendEnvelope(ce)
-		}
-	})
-
-	go manager.chatPipe.Process(manager.ctx)
 	go manager.wsListener()
+	go manager.senderLoop()
 	go func() {
 		<-ctx.Done()
 		manager.Close()
 	}()
 
 	return manager, nil
+}
+
+func (manager *MeshManager) senderLoop() {
+	for {
+		select {
+		case <-manager.ctx.Done():
+			return
+		case envelope := <-manager.outbox:
+			manager.membersMux.Lock()
+			currentMembers := slices.Clone(manager.members)
+			manager.membersMux.Unlock()
+
+			for _, member := range currentMembers {
+				go member.sendChatEnvelope(envelope) // TODO: retry on errors?
+			}
+		}
+	}
 }
 
 func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
@@ -97,7 +108,6 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 		cancel:            memberCancel,
 		username:          username,
 		connection:        peerConnection,
-		chatPipe:          chat.NewChatPipe(username),
 		dataChannels:      make([]*webrtc.DataChannel, 0),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
 		done:              make(chan struct{}),
@@ -110,18 +120,6 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 	peerConnection.OnICECandidate(member.onICECandidate)
 	peerConnection.OnConnectionStateChange(member.onConnectionStateChange)
 	peerConnection.OnDataChannel(member.onDataChannel)
-
-	member.chatPipe.SetSendHandler(func(ce chat.ChatEnvelope) {
-		dc, found := member.findDataChannel(DataChannelLabelMap[ce.Type])
-		if found {
-			dc.Send(ce.Content)
-		}
-	})
-	member.chatPipe.SetRecvHandler(func(ce chat.ChatEnvelope) {
-		member.meshContext.GetChatPipe().PassRecvEnvelope(ce)
-	})
-
-	go member.chatPipe.Process(member.ctx)
 
 	if manager.shouldSendOffer(member) {
 		_, err := member.createDataChannel("chat-text", nil)
@@ -214,6 +212,6 @@ func (manager *MeshManager) getOrCreateMemberByName(name string) (*MeshMember, e
 	return m, nil
 }
 
-func (manager *MeshManager) GetChatPipe() *chat.ChatPipe {
-	return manager.chatPipe
+func (manager *MeshManager) getInbox() chan<- *chat.ChatEnvelope {
+	return manager.inbox
 }

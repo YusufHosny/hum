@@ -5,9 +5,8 @@ import (
 	"log"
 	"sync"
 
-	"github.com/pion/webrtc/v4"
-
 	"github.com/YusufHosny/hum/internal/chat"
+	"github.com/pion/webrtc/v4"
 )
 
 // ---------------  types ---------------
@@ -18,7 +17,7 @@ type MeshContext interface {
 	sendAnswer(member *MeshMember) error
 	sendCandidate(member *MeshMember, candidate *webrtc.ICECandidate) error
 
-	GetChatPipe() *chat.ChatPipe
+	getInbox() chan<- *chat.ChatEnvelope
 }
 
 // a single p2p connection to another user
@@ -31,7 +30,6 @@ type MeshMember struct {
 	username   string // peer username
 	connection *webrtc.PeerConnection
 
-	chatPipe        *chat.ChatPipe
 	dataChannelsMux sync.Mutex
 	dataChannels    []*webrtc.DataChannel
 

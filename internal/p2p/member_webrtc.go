@@ -1,10 +1,10 @@
 package p2p
 
 import (
-	"fmt"
 	"log"
 	"slices"
 
+	"github.com/YusufHosny/hum/internal/chat"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -39,7 +39,9 @@ func (member *MeshMember) onConnectionStateChange(state webrtc.PeerConnectionSta
 func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	label := dataChannel.Label()
 	if label != "chat-text" && label != "chat-metadata" {
-		panic(fmt.Errorf("Unexpected data channel label: %v\n", label))
+		log.Printf("Unexpected data channel label: %v\n", label)
+		dataChannel.Close()
+		return
 	}
 	msgType := DataChannelLabelRMap[label]
 
@@ -54,7 +56,12 @@ func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	})
 
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		member.chatPipe.Receive(msg.Data, msgType)
+		envelope, err := chat.NewRecvEnvelope(msgType, member.username, msg.Data)
+		if err != nil {
+			log.Printf("Couldn't create recv envelope: %v", err)
+			return
+		}
+		member.meshContext.getInbox() <- envelope
 	})
 }
 
@@ -76,6 +83,14 @@ func (member *MeshMember) findDataChannel(label string) (*webrtc.DataChannel, bo
 		}
 	}
 	return nil, false
+}
+
+func (member *MeshMember) sendChatEnvelope(ce *chat.ChatEnvelope) error {
+	dc, found := member.findDataChannel(DataChannelLabelMap[ce.Type])
+	if found {
+		return dc.Send(ce.Content)
+	}
+	return nil
 }
 
 func (member *MeshMember) createDataChannel(label string, options *webrtc.DataChannelInit) (*webrtc.DataChannel, error) {
