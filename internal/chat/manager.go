@@ -7,7 +7,8 @@ import (
 )
 
 type ChatManager struct {
-	ctx context.Context
+	ctx      context.Context
+	username string
 
 	historyMux sync.RWMutex
 	history    []*ChatEnvelope
@@ -19,9 +20,10 @@ type ChatManager struct {
 	outbox chan *ChatEnvelope
 }
 
-func NewChatManager(ctx context.Context) *ChatManager {
+func NewChatManager(ctx context.Context, username string) *ChatManager {
 	manager := &ChatManager{
 		ctx:         ctx,
+		username:    username,
 		history:     make([]*ChatEnvelope, 0),
 		subscribers: make([]chan *ChatEnvelope, 0),
 		inbox:       make(chan *ChatEnvelope, 100),
@@ -49,6 +51,14 @@ func NewChatManager(ctx context.Context) *ChatManager {
 	return manager
 }
 
+func (manager *ChatManager) GetInbox() chan<- *ChatEnvelope {
+	return manager.inbox
+}
+
+func (manager *ChatManager) GetOutbox() <-chan *ChatEnvelope {
+	return manager.outbox
+}
+
 func (manager *ChatManager) broadcast(ce *ChatEnvelope) {
 	manager.subscribersMux.RLock()
 	defer manager.subscribersMux.RUnlock()
@@ -57,9 +67,6 @@ func (manager *ChatManager) broadcast(ce *ChatEnvelope) {
 		select {
 		case sub <- ce:
 		default:
-			// Subscriber is full or blocked, drop message for this subscriber
-			// to avoid blocking the entire inbox processing goroutine.
-			// (In a real TUI you might want a larger buffer or a dropping strategy)
 		}
 	}
 }
@@ -68,7 +75,6 @@ func (manager *ChatManager) Subscribe() <-chan *ChatEnvelope {
 	manager.subscribersMux.Lock()
 	defer manager.subscribersMux.Unlock()
 
-	// Use a small buffer to handle brief bursts
 	ch := make(chan *ChatEnvelope, 100)
 	manager.subscribers = append(manager.subscribers, ch)
 	return ch
@@ -80,18 +86,28 @@ func (manager *ChatManager) addToHistory(ce *ChatEnvelope) {
 	manager.history = append(manager.history, ce)
 }
 
-func (manager *ChatManager) GetInboxOutbox() (chan<- *ChatEnvelope, <-chan *ChatEnvelope) {
-	return manager.inbox, manager.outbox
-}
-
-func (manager *ChatManager) SendMessage(from string, content string) {
-	envelope := newMessageEnvelope(from, []byte(content))
+func (manager *ChatManager) SendMessage(content string) {
+	envelope := newMessageEnvelope(manager.username, []byte(content))
 	manager.addToHistory(envelope)
 	manager.outbox <- envelope
 }
 
-func (manager *ChatManager) NotifyTyping(from string) {
-	manager.outbox <- newTypingMetadataEnvelope(from)
+func (manager *ChatManager) NotifyTyping() {
+	envelope := newTypingMetadataEnvelope(manager.username)
+	manager.addToHistory(envelope)
+	manager.outbox <- envelope
+}
+
+func (manager *ChatManager) NotifyJoin(chat bool, call bool) {
+	envelope := newJoinMetadataEnvelope(manager.username, chat, call)
+	manager.addToHistory(envelope)
+	manager.outbox <- envelope
+}
+
+func (manager *ChatManager) NotifyAudio(muted bool, deafened bool) {
+	envelope := newAudioMetadataEnvelope(manager.username, muted, deafened)
+	manager.addToHistory(envelope)
+	manager.outbox <- envelope
 }
 
 func (manager *ChatManager) GetHistory() []*ChatEnvelope {

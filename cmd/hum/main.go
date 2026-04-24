@@ -80,7 +80,7 @@ func main() {
 		for scanner.Scan() {
 			text := strings.TrimSpace(scanner.Text())
 			if text != "" {
-				chatManager.SendMessage(*username, text)
+				chatManager.SendMessage(text)
 			}
 			fmt.Print("> ")
 		}

@@ -24,16 +24,17 @@ type MeshManager struct {
 	wsMux              sync.Mutex
 	ws                 *websocket.Conn
 
-	inbox  chan<- *chat.ChatEnvelope
-	outbox <-chan *chat.ChatEnvelope
+	chatManager *chat.ChatManager
 
 	username    string // self username
 	channelName string
 
 	webrtcConfig webrtc.Configuration
-	membersMux   sync.Mutex
-	members      []*MeshMember
-	closeOnce    sync.Once
+	webrtcAPI    *webrtc.API
+
+	membersMux sync.Mutex
+	members    []*MeshMember
+	closeOnce  sync.Once
 }
 
 func NewMeshManager(
@@ -43,31 +44,20 @@ func NewMeshManager(
 	channelName string,
 	chatManager *chat.ChatManager,
 ) (*MeshManager, error) {
-	config := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
-	inbox, outbox := chatManager.GetInboxOutbox()
 
 	manager := &MeshManager{
 		ctx:                ctx,
 		cancel:             cancel,
 		signalingServerUrl: signalingServerUrl,
-		ws:                 nil,
-		inbox:              inbox,
-		outbox:             outbox,
+		chatManager:        chatManager,
 		username:           username,
 		channelName:        channelName,
-		webrtcConfig:       config,
 		members:            make([]*MeshMember, 0),
 	}
+	manager.initWebRTC()
 
-	go manager.wsListener()
+	go manager.websocketLoop()
 	go manager.senderLoop()
 	go func() {
 		<-ctx.Done()
@@ -82,7 +72,7 @@ func (manager *MeshManager) senderLoop() {
 		select {
 		case <-manager.ctx.Done():
 			return
-		case envelope := <-manager.outbox:
+		case envelope := <-manager.chatManager.GetOutbox():
 			manager.membersMux.Lock()
 			currentMembers := slices.Clone(manager.members)
 			manager.membersMux.Unlock()
@@ -114,8 +104,8 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 	}
 
 	manager.membersMux.Lock()
-	defer manager.membersMux.Unlock()
 	manager.members = append(manager.members, member)
+	manager.membersMux.Unlock()
 
 	peerConnection.OnICECandidate(member.onICECandidate)
 	peerConnection.OnConnectionStateChange(member.onConnectionStateChange)
@@ -213,5 +203,5 @@ func (manager *MeshManager) getOrCreateMemberByName(name string) (*MeshMember, e
 }
 
 func (manager *MeshManager) getInbox() chan<- *chat.ChatEnvelope {
-	return manager.inbox
+	return manager.chatManager.GetInbox()
 }

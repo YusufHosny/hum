@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// ----------------- types -----------------
+
 type ChatEnvelope struct {
 	Type      string // "message", "metadata"
 	From      string
@@ -14,8 +16,18 @@ type ChatEnvelope struct {
 }
 
 type metadataPayload struct {
-	Type string `json:"type"` // "typing"
+	Type string `json:"type"` // "typing", "join", "audio"
+
+	// join event
+	Chat bool `json:"chat,omitempty"`
+	Call bool `json:"call,omitempty"`
+
+	// audio event
+	Muted    bool `json:"muted,omitempty"`
+	Deafened bool `json:"deafened,omitempty"`
 }
+
+// ----------------- message factory -----------------
 
 func newMessageEnvelope(from string, content []byte) *ChatEnvelope {
 	return &ChatEnvelope{
@@ -26,8 +38,8 @@ func newMessageEnvelope(from string, content []byte) *ChatEnvelope {
 	}
 }
 
-func isValidMessageType(datachannel string) bool {
-	return datachannel == "message" || datachannel == "metadata"
+func isValidMessageType(value string) bool {
+	return value == "message" || value == "metadata"
 }
 
 // public version for recv only
@@ -46,6 +58,8 @@ func NewRecvEnvelope(msgType string, from string, content []byte) (*ChatEnvelope
 	return envelope, nil
 }
 
+// ----------------- metadata factory -----------------
+
 func newMetadataEnvelope(from string, content []byte) *ChatEnvelope {
 	return &ChatEnvelope{
 		Type:      "metadata",
@@ -57,6 +71,32 @@ func newMetadataEnvelope(from string, content []byte) *ChatEnvelope {
 
 func newTypingMetadataEnvelope(from string) *ChatEnvelope {
 	payload, err := json.Marshal(metadataPayload{Type: "typing"})
+	if err != nil {
+		panic(err)
+	}
+
+	return newMetadataEnvelope(from, payload)
+}
+
+func newJoinMetadataEnvelope(from string, chat bool, call bool) *ChatEnvelope {
+	payload, err := json.Marshal(metadataPayload{
+		Type: "join",
+		Chat: chat,
+		Call: call,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return newMetadataEnvelope(from, payload)
+}
+
+func newAudioMetadataEnvelope(from string, muted bool, deafened bool) *ChatEnvelope {
+	payload, err := json.Marshal(metadataPayload{
+		Type:     "audio",
+		Muted:    muted,
+		Deafened: deafened,
+	})
 	if err != nil {
 		panic(err)
 	}

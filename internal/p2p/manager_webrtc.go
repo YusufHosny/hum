@@ -3,8 +3,25 @@ package p2p
 import (
 	"encoding/json"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
+
+func (manager *MeshManager) initWebRTC() {
+	manager.webrtcConfig = webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		},
+	}
+	interceptors := interceptor.Registry{}
+	/* interceptors.Add(&EncryptInterceptor{
+		username:    manager.username,
+		channelName: manager.channelName,
+	}) */
+	manager.webrtcAPI = webrtc.NewAPI(webrtc.WithInterceptorRegistry(&interceptors))
+}
 
 func (manager *MeshManager) sendOffer(member *MeshMember) error {
 	offer, err := member.connection.CreateOffer(nil)
