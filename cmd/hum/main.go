@@ -12,7 +12,9 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/YusufHosny/hum/internal/audio"
 	"github.com/YusufHosny/hum/internal/chat"
+	"github.com/YusufHosny/hum/internal/crypto"
 	"github.com/YusufHosny/hum/internal/p2p"
 )
 
@@ -52,9 +54,26 @@ func main() {
 		cancel()
 	}()
 
-	chatManager := chat.NewChatManager(ctx, username)
+	cryptor, err := crypto.NewCryptor(*channelName, "dummy-passkey")
+	if err != nil {
+		log.Fatalf("Failed to initialize cryptor: %v", err)
+	}
 
-	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName, chatManager)
+	chatManager := chat.NewChatManager(ctx, *username, cryptor)
+
+	audioConfig := audio.NewDefaultAudioConfig()
+	audioManager, err := audio.NewAudioManager(ctx, audioConfig, cryptor)
+	if err != nil {
+		log.Fatalf("Failed to initialize audio manager: %v", err)
+	}
+
+	err = audioManager.Start()
+	if err != nil {
+		log.Fatalf("Failed to start audio manager: %v", err)
+	}
+	defer audioManager.Stop()
+
+	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName, chatManager, audioManager)
 	if err != nil {
 		log.Fatalf("Failed to initialize MeshManager: %v", err)
 	}
