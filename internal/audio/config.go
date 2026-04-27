@@ -3,10 +3,10 @@ package audio
 import "time"
 
 const (
-	DefaultSampleRate    = 48000 // 48khz standard for opus voip
-	DefaultChannels      = 1     // mono audio enough for voice
+	DefaultSampleRate    = 48000                 // 48khz standard for opus voip
+	DefaultChannels      = 1                     // mono audio enough for voice
 	DefaultFrameDuration = 20 * time.Millisecond // 20ms frame is opus standard
-	DefaultBitrate       = 24000 // 24kbps good balance for voice
+	DefaultBitrate       = 24000                 // 24kbps good balance for voice
 )
 
 type AudioConfig struct {

@@ -2,16 +2,14 @@ package p2p
 
 import (
 	"context"
-	"log"
 	"sync"
 
 	"github.com/YusufHosny/hum/internal/audio"
 	"github.com/YusufHosny/hum/internal/chat"
-	"github.com/pion/rtp"
+	"github.com/YusufHosny/hum/internal/logger"
 	"github.com/pion/webrtc/v4"
 )
 
-// ---------------  types ---------------
 type MeshContext interface {
 	removeMember(member *MeshMember)
 
@@ -21,10 +19,11 @@ type MeshContext interface {
 
 	acceptChat(ce *chat.ChatEnvelope)
 	acceptAudio(ae *audio.AudioEnvelope)
+
+	Logger() logger.Logger
 }
 
-// a single p2p connection to another user
-// handles sending SDP/ICE, politeness, and communication
+// single p2p peer connection
 type MeshMember struct {
 	meshContext MeshContext
 	ctx         context.Context
@@ -36,9 +35,7 @@ type MeshMember struct {
 	dataChannelsMux sync.Mutex
 	dataChannels    []*webrtc.DataChannel
 
-	sequencer rtp.Sequencer
-	sendTrack *webrtc.TrackLocalStaticRTP
-	sendSSRC  uint32
+	sendTrack *webrtc.TrackLocalStaticSample
 
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
@@ -49,8 +46,6 @@ type MeshMember struct {
 	done      chan struct{}
 	closeOnce sync.Once
 }
-
-// ---------------  functions ---------------
 
 func (member *MeshMember) Close() error {
 	member.closeOnce.Do(func() {
@@ -65,7 +60,7 @@ func (member *MeshMember) Close() error {
 	if member.connection.ConnectionState() != webrtc.PeerConnectionStateClosed {
 		err := member.connection.Close()
 		if err != nil {
-			log.Printf("Failed to close connection: %v\n", err)
+			member.meshContext.Logger().Printf("Failed to close connection: %v\n", err)
 			return err
 		}
 	}

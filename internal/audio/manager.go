@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	
+
 	"github.com/YusufHosny/hum/internal/crypto"
 )
 
@@ -19,7 +19,7 @@ type AudioManager struct {
 
 	config  *AudioConfig
 	cryptor *crypto.Cryptor
-	
+
 	recorder AudioRecorder
 	player   AudioPlayer
 	encoder  AudioEncoder
@@ -33,7 +33,7 @@ type AudioManager struct {
 
 func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.Cryptor) (*AudioManager, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	
+
 	manager := &AudioManager{
 		ctx:         ctx,
 		cancel:      cancel,
@@ -45,7 +45,7 @@ func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.C
 	}
 
 	var err error
-	
+
 	manager.encoder, err = NewOpusEncoder(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init encoder: %w", err)

@@ -9,38 +9,73 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
 	"github.com/YusufHosny/hum/internal/audio"
 	"github.com/YusufHosny/hum/internal/chat"
+	"github.com/YusufHosny/hum/internal/config"
 	"github.com/YusufHosny/hum/internal/crypto"
+	"github.com/YusufHosny/hum/internal/logger"
 	"github.com/YusufHosny/hum/internal/p2p"
 )
 
 func main() {
-	username := flag.String("u", "", "Username for this peer (required)")
+	usernameFlag := flag.String("u", "", "Username for this peer (overrides config)")
 	channelName := flag.String("c", "test-room", "Channel name to join")
-	signalingBase := flag.String("s", "ws://127.0.0.1:8787", "Base URL for the signaling server")
+	signalingBase := flag.String("s", "", "Base URL for the signaling server (overrides config)")
 
 	flag.Parse()
 
-	if *username == "" {
-		fmt.Println("Error: Username is required.")
+	appConfig, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		log.Fatalf("Failed to get config directory: %v", err)
+	}
+
+	appLogger := logger.New(filepath.Join(configDir, "hum.log"))
+
+	username := appConfig.Username
+	if *usernameFlag != "" {
+		username = *usernameFlag
+	}
+
+	if username == "" {
+		fmt.Println("Error: Username is required. Set it in config or pass -u flag.")
 		flag.Usage()
 		os.Exit(1)
 	}
+	appConfig.Username = username
 
-	// wss://worker.dev/<channelName>?usr=<username>
-	rawURL := fmt.Sprintf("%s/%s?usr=%s", *signalingBase, *channelName, *username)
-	signalingURL, err := url.Parse(rawURL)
+	sigBase := appConfig.SignalingURL
+	if *signalingBase != "" {
+		sigBase = *signalingBase
+	}
+	appConfig.SignalingURL = sigBase
+
+	config.AddRecentChannel(appConfig, *channelName)
+	err = config.SaveConfig(appConfig)
 	if err != nil {
-		log.Fatalf("Failed to parse signaling URL: %v", err)
+		appLogger.Printf("Failed to save config: %v", err)
 	}
 
-	log.Printf("Starting hum peer: %s", *username)
-	log.Printf("Joining channel: %s", *channelName)
-	log.Printf("Signaling server: %s", signalingURL.String())
+	// construct signaling url
+	rawURL := fmt.Sprintf("%s/%s?usr=%s", appConfig.SignalingURL, *channelName, username)
+	signalingURL, err := url.Parse(rawURL)
+	if err != nil {
+		appLogger.Fatalf("Failed to parse signaling URL: %v", err)
+	}
+
+	appLogger.Printf("Starting hum peer: %s", username)
+	appLogger.Printf("Joining channel: %s", *channelName)
+	appLogger.Printf("Signaling server: %s", signalingURL.String())
+
+	fmt.Printf("Logging to: %s\n", filepath.Join(configDir, "hum.log"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -50,49 +85,60 @@ func main() {
 
 	go func() {
 		sig := <-sigs
-		log.Printf("\nReceived signal: %v. Shutting down...", sig)
+		appLogger.Printf("\nReceived signal: %v. Shutting down...", sig)
 		cancel()
 	}()
 
 	cryptor, err := crypto.NewCryptor(*channelName, "dummy-passkey")
 	if err != nil {
-		log.Fatalf("Failed to initialize cryptor: %v", err)
+		appLogger.Fatalf("Failed to initialize cryptor: %v", err)
 	}
 
-	chatManager := chat.NewChatManager(ctx, *username, cryptor)
+	chatManager := chat.NewChatManager(ctx, username, cryptor)
 
 	audioConfig := audio.NewDefaultAudioConfig()
+	audioConfig.InputVolume = appConfig.InputVolume
+	audioConfig.OutputVolume = appConfig.OutputVolume
+
 	audioManager, err := audio.NewAudioManager(ctx, audioConfig, cryptor)
 	if err != nil {
-		log.Fatalf("Failed to initialize audio manager: %v", err)
+		appLogger.Fatalf("Failed to initialize audio manager: %v", err)
 	}
 
 	err = audioManager.Start()
 	if err != nil {
-		log.Fatalf("Failed to start audio manager: %v", err)
+		appLogger.Fatalf("Failed to start audio manager: %v", err)
 	}
 	defer audioManager.Stop()
 
-	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName, chatManager, audioManager)
+	meshConfig := p2p.MeshConfig{
+		SignalingServerURL: *signalingURL,
+		STUNServers:        appConfig.STUNServers,
+		Username:           username,
+		ChannelName:        *channelName,
+		Logger:             appLogger,
+	}
+
+	manager, err := p2p.NewMeshManager(ctx, meshConfig, chatManager, audioManager)
 	if err != nil {
-		log.Fatalf("Failed to initialize MeshManager: %v", err)
+		appLogger.Fatalf("Failed to initialize MeshManager: %v", err)
 	}
 
 	subChan := chatManager.Subscribe()
 
-	// Handle incoming messages
+	// handle incoming messages
 	go func() {
 		for env := range subChan {
 			if env.Type == "message" {
-				// Print over current line to somewhat handle interleaved typing
+				// handle interleaved typing
 				fmt.Printf("\r\033[K[%s]: %s\n> ", env.From, string(env.Content))
 			}
 		}
 	}()
 
-	log.Println("Peer is running. Type a message and press Enter to send.")
+	fmt.Println("Peer is running. Type a message and press Enter to send.")
 
-	// Start reading from stdin
+	// read stdin
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
 		fmt.Print("> ")
@@ -104,7 +150,7 @@ func main() {
 			fmt.Print("> ")
 		}
 		if err := scanner.Err(); err != nil {
-			log.Printf("Error reading standard input: %v", err)
+			appLogger.Printf("Error reading standard input: %v", err)
 		}
 	}()
 
@@ -112,8 +158,8 @@ func main() {
 
 	err = manager.Close()
 	if err != nil {
-		log.Printf("Error during shutdown: %v", err)
+		appLogger.Printf("Error during shutdown: %v", err)
 	} else {
-		log.Println("Shutdown complete.")
+		appLogger.Println("Shutdown complete.")
 	}
 }

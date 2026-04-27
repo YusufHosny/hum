@@ -9,16 +9,16 @@ import (
 )
 
 type malgoRecorder struct {
-	ctx        context.Context
-	malgoCtx   *malgo.AllocatedContext
-	device     *malgo.Device
-	config     *AudioConfig
-	
-	outChan    chan []int16
-	
-	volMux     sync.RWMutex
-	volume     float64
-	muted      bool
+	ctx      context.Context
+	malgoCtx *malgo.AllocatedContext
+	device   *malgo.Device
+	config   *AudioConfig
+
+	outChan chan []int16
+
+	volMux sync.RWMutex
+	volume float64
+	muted  bool
 }
 
 func NewMalgoRecorder(ctx context.Context, config *AudioConfig) (AudioRecorder, error) {
@@ -81,7 +81,7 @@ func (r *malgoRecorder) Start() error {
 			for len(buffer) >= frameSize {
 				frame := make([]int16, frameSize)
 				copy(frame, buffer[:frameSize])
-				
+
 				select {
 				case r.outChan <- frame:
 				default:

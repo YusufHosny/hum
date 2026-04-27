@@ -9,16 +9,16 @@ import (
 )
 
 type malgoPlayer struct {
-	ctx        context.Context
-	malgoCtx   *malgo.AllocatedContext
-	device     *malgo.Device
-	config     *AudioConfig
+	ctx      context.Context
+	malgoCtx *malgo.AllocatedContext
+	device   *malgo.Device
+	config   *AudioConfig
 
-	inChan     chan []int16
-	
-	volMux     sync.RWMutex
-	volume     float64
-	deafened   bool
+	inChan chan []int16
+
+	volMux   sync.RWMutex
+	volume   float64
+	deafened bool
 }
 
 func NewMalgoPlayer(ctx context.Context, config *AudioConfig) (AudioPlayer, error) {
@@ -67,9 +67,9 @@ func (p *malgoPlayer) Start() error {
 		Data: func(pOutputSample, pInputSamples []byte, framecount uint32) {
 			// calculate requested samples from os
 			requestedSamples := int(framecount) * p.config.Channels
-			
+
 			bufMux.Lock()
-			
+
 			availableSamples := len(buffer)
 			samplesToRead := requestedSamples
 			if availableSamples < requestedSamples {
