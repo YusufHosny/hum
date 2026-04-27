@@ -9,8 +9,7 @@ import (
 )
 
 type AudioEnvelope struct {
-	/* TODO: for now i wont use seqNumber, but with a rollover counter it could be used as encryption nonce
-	which would drop payload size by abit, as the nonce is sent inside the packet currently */
+	// TODO: use seqnumber as nonce to drop payload size
 	seqNumber *uint32
 	Content   []byte
 }
@@ -26,11 +25,9 @@ type AudioManager struct {
 	player   AudioPlayer
 	encoder  AudioEncoder
 
-	// Channels for the network layer
 	inbox  chan *AudioEnvelope
 	outbox chan *AudioEnvelope
 
-	// For local pub/sub (e.g. visualizing audio in TUI)
 	subscribersMux sync.RWMutex
 	subscribers    []chan *AudioEnvelope
 }
@@ -48,7 +45,6 @@ func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.C
 		subscribers: make([]chan *AudioEnvelope, 0),
 	}
 
-	// Initialize components
 	var err error
 	
 	manager.encoder, err = NewOpusEncoder(config)
@@ -97,7 +93,6 @@ func (m *AudioManager) Stop() {
 	m.subscribersMux.Unlock()
 }
 
-// captureLoop continuously reads from the mic, encodes, encrypts, and sends to outbox
 func (m *AudioManager) captureLoop() {
 	for {
 		select {
@@ -106,7 +101,6 @@ func (m *AudioManager) captureLoop() {
 		default:
 			pcm, err := m.recorder.Read()
 			if err != nil {
-				// Log or handle error, for now we continue
 				continue
 			}
 
@@ -115,7 +109,6 @@ func (m *AudioManager) captureLoop() {
 				continue
 			}
 
-			// Encrypt (nil nonce means cryptor generates a random one and prepends it)
 			encrypted, err := m.cryptor.Encrypt(encoded, nil)
 			if err != nil {
 				continue
@@ -126,38 +119,30 @@ func (m *AudioManager) captureLoop() {
 			select {
 			case m.outbox <- envelope:
 			default:
-				// Dropped frame if network is too slow
 			}
 		}
 	}
 }
 
-// playbackLoop continuously reads from inbox, decrypts, decodes, and plays
 func (m *AudioManager) playbackLoop() {
 	for {
 		select {
 		case <-m.ctx.Done():
 			return
 		case received := <-m.inbox:
-			// 1. Broadcast to local subscribers (TUI visualizations etc)
 			m.broadcast(received)
 
-			// 2. Decrypt
 			decrypted, err := m.cryptor.Decrypt(received.Content, nil)
 			if err != nil {
-				// Failed to decrypt (wrong channel, corruption, etc)
 				continue
 			}
 
-			// 3. Decode Opus
 			pcm, err := m.encoder.Decode(decrypted)
 			if err != nil {
 				continue
 			}
 
-			// 4. Play
-			// TODO: A Jitter Buffer should be placed here in the future
-			// to handle out-of-order packets before writing to the player.
+			// TODO: add jitter buffer here before writing to player
 			_ = m.player.Write(pcm)
 		}
 	}
@@ -195,8 +180,6 @@ func (m *AudioManager) GetOutbox() <-chan *AudioEnvelope {
 func MakeAudioEnvelope(content []byte) *AudioEnvelope {
 	return &AudioEnvelope{Content: content}
 }
-
-// --- Dynamic Control API ---
 
 func (m *AudioManager) SetInputVolume(vol float64) {
 	m.recorder.SetVolume(vol)

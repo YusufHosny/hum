@@ -16,7 +16,6 @@ type opusEncoder struct {
 	decodeMutex sync.Mutex
 }
 
-// NewOpusEncoder creates a new Opus encoder/decoder wrapper.
 func NewOpusEncoder(cfg *AudioConfig) (AudioEncoder, error) {
 	enc, err := opus.NewEncoder(cfg.SampleRate, cfg.Channels, opus.AppVoIP)
 	if err != nil {
@@ -37,7 +36,7 @@ func NewOpusEncoder(cfg *AudioConfig) (AudioEncoder, error) {
 		enc:        enc,
 		dec:        dec,
 		config:     cfg,
-		bufferSize: 1024 * 4, // 4KB should be plenty for a compressed voice frame
+		bufferSize: 1024 * 4,
 	}, nil
 }
 
@@ -57,16 +56,14 @@ func (o *opusEncoder) Decode(encoded []byte) ([]int16, error) {
 	o.decodeMutex.Lock()
 	defer o.decodeMutex.Unlock()
 
-	// Output buffer size is frame size * channels
 	outData := make([]int16, o.config.FrameSize()*o.config.Channels)
 	
-	// Handle missing packet (FEC) by passing nil if needed
+	// pass nil for fec
 	n, err := o.dec.Decode(encoded, outData)
 	if err != nil {
 		return nil, fmt.Errorf("decode failed: %w", err)
 	}
 
-	// Trim the slice to the actual decoded sample count (n is samples per channel)
 	return outData[:n*o.config.Channels], nil
 }
 

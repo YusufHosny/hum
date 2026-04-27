@@ -22,9 +22,7 @@ type malgoRecorder struct {
 }
 
 func NewMalgoRecorder(ctx context.Context, config *AudioConfig) (AudioRecorder, error) {
-	malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
-		// Log malgo messages if needed
-	})
+	malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init malgo context: %w", err)
 	}
@@ -33,7 +31,6 @@ func NewMalgoRecorder(ctx context.Context, config *AudioConfig) (AudioRecorder, 
 		ctx:      ctx,
 		malgoCtx: malgoCtx,
 		config:   config,
-		// Buffer a few frames to prevent dropping if the pipeline stutters
 		outChan:  make(chan []int16, 10),
 		volume:   config.InputVolume,
 		muted:    config.Muted,
@@ -45,24 +42,19 @@ func (r *malgoRecorder) Start() error {
 	deviceConfig.Capture.Format = malgo.FormatS16
 	deviceConfig.Capture.Channels = uint32(r.config.Channels)
 	deviceConfig.SampleRate = uint32(r.config.SampleRate)
-	// Let malgo request smaller chunks, we'll accumulate them into frame sizes
 	deviceConfig.Alsa.NoMMap = 1
 
-	// Ring buffer to accumulate exactly one FrameSize of samples
 	frameSize := r.config.FrameSize() * r.config.Channels
 	buffer := make([]int16, 0, frameSize)
 
 	captureCallbacks := malgo.DeviceCallbacks{
 		Data: func(pOutputSample, pInputSamples []byte, framecount uint32) {
-			// Convert bytes to int16 slice safely
-			// Since malgo provides S16, every 2 bytes is one sample
+			// convert malgo s16 bytes to int16
 			samples := make([]int16, len(pInputSamples)/2)
 			for i := 0; i < len(samples); i++ {
-				// Little endian conversion
 				samples[i] = int16(pInputSamples[i*2]) | (int16(pInputSamples[i*2+1]) << 8)
 			}
 
-			// Apply volume / mute
 			r.volMutex.RLock()
 			vol := r.volume
 			muted := r.muted
@@ -84,22 +76,17 @@ func (r *malgoRecorder) Start() error {
 				}
 			}
 
-			// Accumulate into our buffer
 			buffer = append(buffer, samples...)
 
-			// If we have enough for a frame, send it out
 			for len(buffer) >= frameSize {
 				frame := make([]int16, frameSize)
 				copy(frame, buffer[:frameSize])
 				
-				// Non-blocking send, drop frame if pipeline is completely blocked
 				select {
 				case r.outChan <- frame:
 				default:
-					// Frame dropped
 				}
 
-				// Shift buffer
 				buffer = buffer[frameSize:]
 			}
 		},

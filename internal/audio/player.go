@@ -31,7 +31,7 @@ func NewMalgoPlayer(ctx context.Context, config *AudioConfig) (AudioPlayer, erro
 		ctx:      ctx,
 		malgoCtx: malgoCtx,
 		config:   config,
-		inChan:   make(chan []int16, 50), // Buffer roughly 1 second of audio (at 20ms frames)
+		inChan:   make(chan []int16, 50), // buffer ~1s audio at 20ms frames
 		volume:   config.OutputVolume,
 		deafened: config.Deafened,
 	}, nil
@@ -44,11 +44,9 @@ func (p *malgoPlayer) Start() error {
 	deviceConfig.SampleRate = uint32(p.config.SampleRate)
 	deviceConfig.Alsa.NoMMap = 1
 
-	// Internal playback buffer
 	var buffer []int16
 	var bufMutex sync.Mutex
 
-	// Helper goroutine to drain the channel into the buffer
 	go func() {
 		for {
 			select {
@@ -67,19 +65,17 @@ func (p *malgoPlayer) Start() error {
 
 	playbackCallbacks := malgo.DeviceCallbacks{
 		Data: func(pOutputSample, pInputSamples []byte, framecount uint32) {
-			// Calculate how many samples the OS wants (framecount * channels)
+			// calculate requested samples from os
 			requestedSamples := int(framecount) * p.config.Channels
 			
 			bufMutex.Lock()
 			
-			// If we don't have enough data, we play silence for the remainder
 			availableSamples := len(buffer)
 			samplesToRead := requestedSamples
 			if availableSamples < requestedSamples {
 				samplesToRead = availableSamples
 			}
 
-			// Extract samples
 			samples := make([]int16, requestedSamples)
 			if samplesToRead > 0 {
 				copy(samples, buffer[:samplesToRead])
@@ -87,7 +83,6 @@ func (p *malgoPlayer) Start() error {
 			}
 			bufMutex.Unlock()
 
-			// Apply volume / deafen
 			p.volMutex.RLock()
 			vol := p.volume
 			deafened := p.deafened
@@ -109,9 +104,7 @@ func (p *malgoPlayer) Start() error {
 				}
 			}
 
-			// Convert int16 back to bytes for malgo
 			for i := 0; i < len(samples); i++ {
-				// Little endian conversion
 				pOutputSample[i*2] = byte(samples[i])
 				pOutputSample[i*2+1] = byte(samples[i] >> 8)
 			}
