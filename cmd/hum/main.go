@@ -52,7 +52,7 @@ func main() {
 		cancel()
 	}()
 
-	chatManager := chat.NewChatManager(ctx)
+	chatManager := chat.NewChatManager(ctx, username)
 
 	manager, err := p2p.NewMeshManager(ctx, *signalingURL, *username, *channelName, chatManager)
 	if err != nil {

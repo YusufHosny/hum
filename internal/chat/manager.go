@@ -4,11 +4,14 @@ import (
 	"context"
 	"slices"
 	"sync"
+
+	"github.com/YusufHosny/hum/internal/crypto"
 )
 
 type ChatManager struct {
 	ctx      context.Context
 	username string
+	cryptor  *crypto.Cryptor
 
 	historyMux sync.RWMutex
 	history    []*ChatEnvelope
@@ -20,10 +23,15 @@ type ChatManager struct {
 	outbox chan *ChatEnvelope
 }
 
-func NewChatManager(ctx context.Context, username string) *ChatManager {
+func NewChatManager(
+	ctx context.Context,
+	username string,
+	cryptor *crypto.Cryptor,
+) *ChatManager {
 	manager := &ChatManager{
 		ctx:         ctx,
 		username:    username,
+		cryptor:     cryptor,
 		history:     make([]*ChatEnvelope, 0),
 		subscribers: make([]chan *ChatEnvelope, 0),
 		inbox:       make(chan *ChatEnvelope, 100),
@@ -86,28 +94,35 @@ func (manager *ChatManager) addToHistory(ce *ChatEnvelope) {
 	manager.history = append(manager.history, ce)
 }
 
-func (manager *ChatManager) SendMessage(content string) {
+func (manager *ChatManager) encryptAndSend(ce *ChatEnvelope) error {
+	encrypted, err := manager.cryptor.Encrypt(ce.Content, nil)
+	if err != nil {
+		return err
+	}
+	manager.addToHistory(ce)
+	ce.Content = encrypted
+	manager.outbox <- ce
+	return nil
+}
+
+func (manager *ChatManager) SendMessage(content string) error {
 	envelope := newMessageEnvelope(manager.username, []byte(content))
-	manager.addToHistory(envelope)
-	manager.outbox <- envelope
+	return manager.encryptAndSend(envelope)
 }
 
-func (manager *ChatManager) NotifyTyping() {
+func (manager *ChatManager) NotifyTyping() error {
 	envelope := newTypingMetadataEnvelope(manager.username)
-	manager.addToHistory(envelope)
-	manager.outbox <- envelope
+	return manager.encryptAndSend(envelope)
 }
 
-func (manager *ChatManager) NotifyJoin(chat bool, call bool) {
+func (manager *ChatManager) NotifyJoin(chat bool, call bool) error {
 	envelope := newJoinMetadataEnvelope(manager.username, chat, call)
-	manager.addToHistory(envelope)
-	manager.outbox <- envelope
+	return manager.encryptAndSend(envelope)
 }
 
-func (manager *ChatManager) NotifyAudio(muted bool, deafened bool) {
+func (manager *ChatManager) NotifyAudio(muted bool, deafened bool) error {
 	envelope := newAudioMetadataEnvelope(manager.username, muted, deafened)
-	manager.addToHistory(envelope)
-	manager.outbox <- envelope
+	return manager.encryptAndSend(envelope)
 }
 
 func (manager *ChatManager) GetHistory() []*ChatEnvelope {

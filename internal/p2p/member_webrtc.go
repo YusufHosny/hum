@@ -8,6 +8,25 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func (member *MeshMember) initWebRTC() error {
+	err := member.setupOutboundAudio()
+	if err != nil {
+		return err
+	}
+
+	member.connection.OnICECandidate(member.onICECandidate)
+	member.connection.OnConnectionStateChange(member.onConnectionStateChange)
+	member.connection.OnDataChannel(member.onDataChannel)
+	member.connection.OnTrack(member.onTrack)
+
+	return nil
+}
+
+func (member *MeshMember) onTrack(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	go member.rtcpReceiverLoop(receiver)
+	go member.rtpReceiverLoop(remoteTrack)
+}
+
 // handles when a candidate is produced/found by pion locally
 func (member *MeshMember) onICECandidate(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
@@ -61,7 +80,7 @@ func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 			log.Printf("Couldn't create recv envelope: %v", err)
 			return
 		}
-		member.meshContext.getInbox() <- envelope
+		member.meshContext.acceptChat(envelope)
 	})
 }
 

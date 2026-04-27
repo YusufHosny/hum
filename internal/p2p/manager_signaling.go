@@ -21,7 +21,7 @@ type SignalingMessage struct {
 	Error      string   `json:"error,omitempty"`
 }
 
-func (manager *MeshManager) wsListener() {
+func (manager *MeshManager) websocketLoop() {
 	backoff := time.Second
 
 	for {

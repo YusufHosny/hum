@@ -2,12 +2,13 @@ package p2p
 
 import (
 	"encoding/json"
+	"log"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
 
-func (manager *MeshManager) initWebRTC() {
+func (manager *MeshManager) initWebRTC() error {
 	manager.webrtcConfig = webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
@@ -15,12 +16,35 @@ func (manager *MeshManager) initWebRTC() {
 			},
 		},
 	}
-	interceptors := interceptor.Registry{}
-	/* interceptors.Add(&EncryptInterceptor{
-		username:    manager.username,
-		channelName: manager.channelName,
-	}) */
-	manager.webrtcAPI = webrtc.NewAPI(webrtc.WithInterceptorRegistry(&interceptors))
+
+	interceptors := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(&webrtc.MediaEngine{}, interceptors); err != nil {
+		return err
+	}
+	manager.webrtcAPI = webrtc.NewAPI(webrtc.WithInterceptorRegistry(interceptors))
+	return nil
+}
+
+func (manager *MeshManager) setupDatachannels(member *MeshMember) error {
+	_, err := member.createDataChannel("chat-text", nil)
+	if err != nil {
+		return err
+	}
+
+	_, err = member.createDataChannel("chat-metadata", &webrtc.DataChannelInit{Ordered: new(false)})
+	if err != nil {
+		log.Printf("Failed to create datachannel: %v\n", err)
+		return err
+	}
+
+	err = manager.sendOffer(member)
+	if err != nil {
+		log.Printf("Failed to send offer: %v\n", err)
+		member.Close()
+		return err
+	}
+
+	return nil
 }
 
 func (manager *MeshManager) sendOffer(member *MeshMember) error {

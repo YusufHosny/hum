@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v4"
 
+	"github.com/YusufHosny/hum/internal/audio"
 	"github.com/YusufHosny/hum/internal/chat"
 )
 
@@ -24,7 +25,8 @@ type MeshManager struct {
 	wsMux              sync.Mutex
 	ws                 *websocket.Conn
 
-	chatManager *chat.ChatManager
+	chatManager  *chat.ChatManager
+	audioManager *audio.AudioManager
 
 	username    string // self username
 	channelName string
@@ -43,6 +45,7 @@ func NewMeshManager(
 	username string,
 	channelName string,
 	chatManager *chat.ChatManager,
+	audioManager *audio.AudioManager,
 ) (*MeshManager, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -50,12 +53,19 @@ func NewMeshManager(
 		ctx:                ctx,
 		cancel:             cancel,
 		signalingServerUrl: signalingServerUrl,
-		chatManager:        chatManager,
-		username:           username,
-		channelName:        channelName,
-		members:            make([]*MeshMember, 0),
+
+		chatManager:  chatManager,
+		audioManager: audioManager,
+
+		username:    username,
+		channelName: channelName,
+		members:     make([]*MeshMember, 0),
 	}
-	manager.initWebRTC()
+	err := manager.initWebRTC()
+	if err != nil {
+		log.Printf("Failed to initialize mesh manager webrtc: %v", err)
+		return nil, err
+	}
 
 	go manager.websocketLoop()
 	go manager.senderLoop()
@@ -69,23 +79,27 @@ func NewMeshManager(
 
 func (manager *MeshManager) senderLoop() {
 	for {
+		manager.membersMux.Lock()
+		currentMembers := slices.Clone(manager.members)
+		manager.membersMux.Unlock()
+
 		select {
 		case <-manager.ctx.Done():
 			return
 		case envelope := <-manager.chatManager.GetOutbox():
-			manager.membersMux.Lock()
-			currentMembers := slices.Clone(manager.members)
-			manager.membersMux.Unlock()
-
 			for _, member := range currentMembers {
 				go member.sendChatEnvelope(envelope) // TODO: retry on errors?
+			}
+		case envelope := <-manager.audioManager.GetOutbox():
+			for _, member := range currentMembers {
+				go member.sendAudioEnvelope(envelope) // TODO: retry on errors?
 			}
 		}
 	}
 }
 
 func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
-	peerConnection, err := webrtc.NewPeerConnection(manager.webrtcConfig)
+	peerConnection, err := manager.webrtcAPI.NewPeerConnection(manager.webrtcConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -93,41 +107,32 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 	memberCtx, memberCancel := context.WithCancel(manager.ctx)
 
 	member := &MeshMember{
-		meshContext:       manager,
-		ctx:               memberCtx,
-		cancel:            memberCancel,
-		username:          username,
-		connection:        peerConnection,
+		meshContext: manager,
+		ctx:         memberCtx,
+		cancel:      memberCancel,
+		done:        make(chan struct{}),
+
+		username:   username,
+		connection: peerConnection,
+
 		dataChannels:      make([]*webrtc.DataChannel, 0),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
-		done:              make(chan struct{}),
 	}
 
 	manager.membersMux.Lock()
 	manager.members = append(manager.members, member)
 	manager.membersMux.Unlock()
 
-	peerConnection.OnICECandidate(member.onICECandidate)
-	peerConnection.OnConnectionStateChange(member.onConnectionStateChange)
-	peerConnection.OnDataChannel(member.onDataChannel)
+	err = member.initWebRTC()
+	if err != nil {
+		log.Printf("Failed to initialize webrtc: %v\n", err)
+		return nil, err
+	}
 
 	if manager.shouldSendOffer(member) {
-		_, err := member.createDataChannel("chat-text", nil)
+		err := manager.setupDatachannels(member)
 		if err != nil {
-			log.Printf("Failed to create datachannel: %v\n", err)
-			return nil, err
-		}
-
-		_, err = member.createDataChannel("chat-metadata", &webrtc.DataChannelInit{Ordered: new(false)})
-		if err != nil {
-			log.Printf("Failed to create datachannel: %v\n", err)
-			return nil, err
-		}
-
-		err = manager.sendOffer(member)
-		if err != nil {
-			log.Printf("Failed to send offer: %v\n", err)
-			member.Close()
+			log.Printf("Failed to setup datachannels: %v\n", err)
 			return nil, err
 		}
 	}
@@ -202,6 +207,10 @@ func (manager *MeshManager) getOrCreateMemberByName(name string) (*MeshMember, e
 	return m, nil
 }
 
-func (manager *MeshManager) getInbox() chan<- *chat.ChatEnvelope {
-	return manager.chatManager.GetInbox()
+func (manager *MeshManager) acceptChat(ce *chat.ChatEnvelope) {
+	manager.chatManager.GetInbox() <- ce
+}
+
+func (manager *MeshManager) acceptAudio(ae *audio.AudioEnvelope) {
+	manager.audioManager.GetInbox() <- ae
 }
