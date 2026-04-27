@@ -33,6 +33,10 @@ export class SignalingServer implements DurableObject {
 		const username = url.searchParams.get('usr')!;
 
 		const allSockets = this.state.getWebSockets();
+		const MAX_USERS_PER_CHANNEL = 20;
+		if (allSockets.length > MAX_USERS_PER_CHANNEL) {
+			return new Response(JSON.stringify({ message: "Channel is currently full" }), { status: 401 });
+		}
 		for (const socket of allSockets) {
 			const [storedUsername] = this.state.getTags(socket);
 			if (storedUsername === username) {
