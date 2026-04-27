@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"errors"
-	"log"
 	"net/url"
 	"slices"
 	"sync"
@@ -13,7 +12,26 @@ import (
 
 	"github.com/YusufHosny/hum/internal/audio"
 	"github.com/YusufHosny/hum/internal/chat"
+	"github.com/YusufHosny/hum/internal/logger"
 )
+
+type ChatPipe interface {
+	GetInbox() chan<- *chat.ChatEnvelope
+	GetOutbox() <-chan *chat.ChatEnvelope
+}
+
+type AudioPipe interface {
+	GetInbox() chan<- *audio.AudioEnvelope
+	GetOutbox() <-chan *audio.AudioEnvelope
+}
+
+type MeshConfig struct {
+	SignalingServerURL url.URL
+	STUNServers        []string
+	Username           string
+	ChannelName        string
+	Logger             logger.Logger
+}
 
 // manages and orchestrates all communication
 // handles signaling and creating individual member p2p connections
@@ -25,8 +43,8 @@ type MeshManager struct {
 	wsMux              sync.Mutex
 	ws                 *websocket.Conn
 
-	chatManager  *chat.ChatManager
-	audioManager *audio.AudioManager
+	chatPipe  ChatPipe
+	audioPipe AudioPipe
 
 	username    string // self username
 	channelName string
@@ -37,33 +55,34 @@ type MeshManager struct {
 	membersMux sync.Mutex
 	members    []*MeshMember
 	closeOnce  sync.Once
+
+	logger logger.Logger
 }
 
 func NewMeshManager(
 	ctx context.Context,
-	signalingServerUrl url.URL,
-	username string,
-	channelName string,
-	chatManager *chat.ChatManager,
-	audioManager *audio.AudioManager,
+	config MeshConfig,
+	chatPipe ChatPipe,
+	audioPipe AudioPipe,
 ) (*MeshManager, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	manager := &MeshManager{
 		ctx:                ctx,
 		cancel:             cancel,
-		signalingServerUrl: signalingServerUrl,
+		signalingServerUrl: config.SignalingServerURL,
 
-		chatManager:  chatManager,
-		audioManager: audioManager,
+		chatPipe:  chatPipe,
+		audioPipe: audioPipe,
 
-		username:    username,
-		channelName: channelName,
+		username:    config.Username,
+		channelName: config.ChannelName,
 		members:     make([]*MeshMember, 0),
+		logger:      config.Logger,
 	}
-	err := manager.initWebRTC()
+	err := manager.initWebRTC(config.STUNServers)
 	if err != nil {
-		log.Printf("Failed to initialize mesh manager webrtc: %v", err)
+		manager.logger.Printf("Failed to initialize mesh manager webrtc: %v", err)
 		return nil, err
 	}
 
@@ -86,11 +105,11 @@ func (manager *MeshManager) senderLoop() {
 		select {
 		case <-manager.ctx.Done():
 			return
-		case envelope := <-manager.chatManager.GetOutbox():
+		case envelope := <-manager.chatPipe.GetOutbox():
 			for _, member := range currentMembers {
 				go member.sendChatEnvelope(envelope) // TODO: retry on errors?
 			}
-		case envelope := <-manager.audioManager.GetOutbox():
+		case envelope := <-manager.audioPipe.GetOutbox():
 			for _, member := range currentMembers {
 				go member.sendAudioEnvelope(envelope) // TODO: retry on errors?
 			}
@@ -125,14 +144,14 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 
 	err = member.initWebRTC()
 	if err != nil {
-		log.Printf("Failed to initialize webrtc: %v\n", err)
+		manager.logger.Printf("Failed to initialize webrtc: %v\n", err)
 		return nil, err
 	}
 
 	if manager.shouldSendOffer(member) {
 		err := manager.setupDatachannels(member)
 		if err != nil {
-			log.Printf("Failed to setup datachannels: %v\n", err)
+			manager.logger.Printf("Failed to setup datachannels: %v\n", err)
 			return nil, err
 		}
 	}
@@ -153,7 +172,7 @@ func (manager *MeshManager) Close() error {
 		for _, member := range currentMembers {
 			err := member.Close()
 			if err != nil {
-				log.Printf("Failed to close peerConnection: %v\n", err)
+				manager.logger.Printf("Failed to close peerConnection: %v\n", err)
 				errOccurred = true
 			}
 		}
@@ -166,7 +185,7 @@ func (manager *MeshManager) Close() error {
 		if manager.ws != nil {
 			err := manager.ws.Close()
 			if err != nil {
-				log.Printf("Failed to close websocket: %v\n", err)
+				manager.logger.Printf("Failed to close websocket: %v\n", err)
 			}
 		}
 		manager.wsMux.Unlock()
@@ -208,9 +227,13 @@ func (manager *MeshManager) getOrCreateMemberByName(name string) (*MeshMember, e
 }
 
 func (manager *MeshManager) acceptChat(ce *chat.ChatEnvelope) {
-	manager.chatManager.GetInbox() <- ce
+	manager.chatPipe.GetInbox() <- ce
 }
 
 func (manager *MeshManager) acceptAudio(ae *audio.AudioEnvelope) {
-	manager.audioManager.GetInbox() <- ae
+	manager.audioPipe.GetInbox() <- ae
+}
+
+func (manager *MeshManager) Logger() logger.Logger {
+	return manager.logger
 }

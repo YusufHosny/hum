@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -27,7 +26,7 @@ func (manager *MeshManager) websocketLoop() {
 	for {
 		select {
 		case <-manager.ctx.Done():
-			log.Println("wsListener stopped: context canceled")
+			manager.logger.Println("wsListener stopped: context canceled")
 			return
 		default:
 			err := manager.connectAndListen()
@@ -35,7 +34,7 @@ func (manager *MeshManager) websocketLoop() {
 				if errors.Is(manager.ctx.Err(), context.Canceled) {
 					return
 				}
-				log.Printf("WS Connection lost: %v. Retrying in %v...", err, backoff)
+				manager.logger.Printf("WS Connection lost: %v. Retrying in %v...", err, backoff)
 
 				timer := time.NewTimer(backoff)
 				select {
@@ -92,7 +91,7 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 
 	var msg SignalingMessage
 	if err := json.Unmarshal(messageContent, &msg); err != nil {
-		log.Printf("Failed to parse signaling message: %v\n", err)
+		manager.logger.Printf("Failed to parse signaling message: %v\n", err)
 		return
 	}
 
@@ -102,7 +101,7 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 
 	switch msg.Type {
 	case "error":
-		log.Printf("Signaling Server Error: %v\n", msg.Error)
+		manager.logger.Printf("Signaling Server Error: %v\n", msg.Error)
 
 	case "member-list":
 		manager.handleMemberList(msg.MemberList)
@@ -110,7 +109,7 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 	case "peer-joined":
 		_, err := manager.getOrCreateMemberByName(msg.From)
 		if err != nil {
-			log.Printf("Failed to handle %s: %v\n", msg.Type, err)
+			manager.logger.Printf("Failed to handle %s: %v\n", msg.Type, err)
 			return
 		}
 
@@ -118,13 +117,13 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 		if m, found := manager.getMemberByName(msg.From); found {
 			m.Close()
 		} else {
-			log.Printf("Peer left but no member found for %s\n", msg.From)
+			manager.logger.Printf("Peer left but no member found for %s\n", msg.From)
 		}
 
 	case "offer", "answer", "candidate":
 		member, err := manager.getOrCreateMemberByName(msg.From)
 		if err != nil {
-			log.Printf("Failed to handle %s: %v\n", msg.Type, err)
+			manager.logger.Printf("Failed to handle %s: %v\n", msg.Type, err)
 			return
 		}
 
@@ -137,7 +136,7 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 		}
 
 	default:
-		log.Printf("Unknown signaling message type: %s\n", msg.Type)
+		manager.logger.Printf("Unknown signaling message type: %s\n", msg.Type)
 	}
 }
 

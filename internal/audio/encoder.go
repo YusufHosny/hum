@@ -57,7 +57,7 @@ func (o *opusEncoder) Decode(encoded []byte) ([]int16, error) {
 	defer o.decodeMux.Unlock()
 
 	outData := make([]int16, o.config.FrameSize()*o.config.Channels)
-	
+
 	n, err := o.dec.Decode(encoded, outData)
 	if err != nil {
 		return nil, fmt.Errorf("decode failed: %w", err)
@@ -69,7 +69,7 @@ func (o *opusEncoder) Decode(encoded []byte) ([]int16, error) {
 func (o *opusEncoder) SetBitrate(bitrate int) error {
 	o.encodeMux.Lock()
 	defer o.encodeMux.Unlock()
-	
+
 	o.config.Bitrate = bitrate
 	return o.enc.SetBitrate(bitrate)
 }

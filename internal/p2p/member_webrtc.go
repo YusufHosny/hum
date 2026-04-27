@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"log"
 	"slices"
 
 	"github.com/YusufHosny/hum/internal/chat"
@@ -43,7 +42,7 @@ func (member *MeshMember) onICECandidate(candidate *webrtc.ICECandidate) {
 
 	err := member.meshContext.sendCandidate(member, candidate)
 	if err != nil {
-		log.Printf("OnICECandidate Error: %v\n", err)
+		member.meshContext.Logger().Printf("OnICECandidate Error: %v\n", err)
 		member.pendingCandidates = append(member.pendingCandidates, candidate)
 	}
 }
@@ -51,14 +50,14 @@ func (member *MeshMember) onICECandidate(candidate *webrtc.ICECandidate) {
 func (member *MeshMember) onConnectionStateChange(state webrtc.PeerConnectionState) {
 	if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 		go member.Close()
-		log.Println("Peer Connection closed or failed")
+		member.meshContext.Logger().Println("Peer Connection closed or failed")
 	}
 }
 
 func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	label := dataChannel.Label()
 	if label != "chat-text" && label != "chat-metadata" {
-		log.Printf("Unexpected data channel label: %v\n", label)
+		member.meshContext.Logger().Printf("Unexpected data channel label: %v\n", label)
 		dataChannel.Close()
 		return
 	}
@@ -77,7 +76,7 @@ func (member *MeshMember) onDataChannel(dataChannel *webrtc.DataChannel) {
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 		envelope, err := chat.NewRecvEnvelope(msgType, member.username, msg.Data)
 		if err != nil {
-			log.Printf("Couldn't create recv envelope: %v", err)
+			member.meshContext.Logger().Printf("Couldn't create recv envelope: %v", err)
 			return
 		}
 		member.meshContext.acceptChat(envelope)
@@ -106,9 +105,10 @@ func (member *MeshMember) findDataChannel(label string) (*webrtc.DataChannel, bo
 
 func (member *MeshMember) sendChatEnvelope(ce *chat.ChatEnvelope) error {
 	dc, found := member.findDataChannel(DataChannelLabelMap[ce.Type])
-	if found {
+	if found && dc.ReadyState() == webrtc.DataChannelStateOpen {
 		return dc.Send(ce.Content)
 	}
+	member.meshContext.Logger().Printf("DataChannel %s not open yet, dropping message for %s", ce.Type, member.username)
 	return nil
 }
 

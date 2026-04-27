@@ -2,17 +2,21 @@ package p2p
 
 import (
 	"encoding/json"
-	"log"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
 
-func (manager *MeshManager) initWebRTC() error {
+func (manager *MeshManager) initWebRTC(stunServers []string) error {
+	urls := []string{"stun:stun.l.google.com:19302"}
+	if len(stunServers) > 0 {
+		urls = stunServers
+	}
+
 	manager.webrtcConfig = webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
+				URLs: urls,
 			},
 		},
 	}
@@ -33,13 +37,13 @@ func (manager *MeshManager) setupDatachannels(member *MeshMember) error {
 
 	_, err = member.createDataChannel("chat-metadata", &webrtc.DataChannelInit{Ordered: new(false)})
 	if err != nil {
-		log.Printf("Failed to create datachannel: %v\n", err)
+		manager.logger.Printf("Failed to create datachannel: %v\n", err)
 		return err
 	}
 
 	err = manager.sendOffer(member)
 	if err != nil {
-		log.Printf("Failed to send offer: %v\n", err)
+		manager.logger.Printf("Failed to send offer: %v\n", err)
 		member.Close()
 		return err
 	}
