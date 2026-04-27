@@ -16,7 +16,7 @@ type malgoPlayer struct {
 
 	inChan     chan []int16
 	
-	volMutex   sync.RWMutex
+	volMux     sync.RWMutex
 	volume     float64
 	deafened   bool
 }
@@ -45,7 +45,7 @@ func (p *malgoPlayer) Start() error {
 	deviceConfig.Alsa.NoMMap = 1
 
 	var buffer []int16
-	var bufMutex sync.Mutex
+	var bufMux sync.Mutex
 
 	go func() {
 		for {
@@ -56,9 +56,9 @@ func (p *malgoPlayer) Start() error {
 				if !ok {
 					return
 				}
-				bufMutex.Lock()
+				bufMux.Lock()
 				buffer = append(buffer, frame...)
-				bufMutex.Unlock()
+				bufMux.Unlock()
 			}
 		}
 	}()
@@ -68,7 +68,7 @@ func (p *malgoPlayer) Start() error {
 			// calculate requested samples from os
 			requestedSamples := int(framecount) * p.config.Channels
 			
-			bufMutex.Lock()
+			bufMux.Lock()
 			
 			availableSamples := len(buffer)
 			samplesToRead := requestedSamples
@@ -81,12 +81,12 @@ func (p *malgoPlayer) Start() error {
 				copy(samples, buffer[:samplesToRead])
 				buffer = buffer[samplesToRead:]
 			}
-			bufMutex.Unlock()
+			bufMux.Unlock()
 
-			p.volMutex.RLock()
+			p.volMux.RLock()
 			vol := p.volume
 			deafened := p.deafened
-			p.volMutex.RUnlock()
+			p.volMux.RUnlock()
 
 			if deafened {
 				for i := range samples {
@@ -151,13 +151,13 @@ func (p *malgoPlayer) Write(frame []int16) error {
 }
 
 func (p *malgoPlayer) SetVolume(v float64) {
-	p.volMutex.Lock()
-	defer p.volMutex.Unlock()
+	p.volMux.Lock()
+	defer p.volMux.Unlock()
 	p.volume = v
 }
 
 func (p *malgoPlayer) SetDeafen(d bool) {
-	p.volMutex.Lock()
-	defer p.volMutex.Unlock()
+	p.volMux.Lock()
+	defer p.volMux.Unlock()
 	p.deafened = d
 }

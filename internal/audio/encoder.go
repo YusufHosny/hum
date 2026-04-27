@@ -8,12 +8,12 @@ import (
 )
 
 type opusEncoder struct {
-	enc         *opus.Encoder
-	dec         *opus.Decoder
-	config      *AudioConfig
-	bufferSize  int
-	encodeMutex sync.Mutex
-	decodeMutex sync.Mutex
+	enc        *opus.Encoder
+	dec        *opus.Decoder
+	config     *AudioConfig
+	bufferSize int
+	encodeMux  sync.Mutex
+	decodeMux  sync.Mutex
 }
 
 func NewOpusEncoder(cfg *AudioConfig) (AudioEncoder, error) {
@@ -41,8 +41,8 @@ func NewOpusEncoder(cfg *AudioConfig) (AudioEncoder, error) {
 }
 
 func (o *opusEncoder) Encode(pcm []int16) ([]byte, error) {
-	o.encodeMutex.Lock()
-	defer o.encodeMutex.Unlock()
+	o.encodeMux.Lock()
+	defer o.encodeMux.Unlock()
 
 	outData := make([]byte, o.bufferSize)
 	n, err := o.enc.Encode(pcm, outData)
@@ -53,12 +53,11 @@ func (o *opusEncoder) Encode(pcm []int16) ([]byte, error) {
 }
 
 func (o *opusEncoder) Decode(encoded []byte) ([]int16, error) {
-	o.decodeMutex.Lock()
-	defer o.decodeMutex.Unlock()
+	o.decodeMux.Lock()
+	defer o.decodeMux.Unlock()
 
 	outData := make([]int16, o.config.FrameSize()*o.config.Channels)
 	
-	// pass nil for fec
 	n, err := o.dec.Decode(encoded, outData)
 	if err != nil {
 		return nil, fmt.Errorf("decode failed: %w", err)
@@ -68,8 +67,8 @@ func (o *opusEncoder) Decode(encoded []byte) ([]int16, error) {
 }
 
 func (o *opusEncoder) SetBitrate(bitrate int) error {
-	o.encodeMutex.Lock()
-	defer o.encodeMutex.Unlock()
+	o.encodeMux.Lock()
+	defer o.encodeMux.Unlock()
 	
 	o.config.Bitrate = bitrate
 	return o.enc.SetBitrate(bitrate)

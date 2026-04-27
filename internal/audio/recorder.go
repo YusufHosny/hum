@@ -16,7 +16,7 @@ type malgoRecorder struct {
 	
 	outChan    chan []int16
 	
-	volMutex   sync.RWMutex
+	volMux     sync.RWMutex
 	volume     float64
 	muted      bool
 }
@@ -55,10 +55,10 @@ func (r *malgoRecorder) Start() error {
 				samples[i] = int16(pInputSamples[i*2]) | (int16(pInputSamples[i*2+1]) << 8)
 			}
 
-			r.volMutex.RLock()
+			r.volMux.RLock()
 			vol := r.volume
 			muted := r.muted
-			r.volMutex.RUnlock()
+			r.volMux.RUnlock()
 
 			if muted {
 				for i := range samples {
@@ -133,13 +133,13 @@ func (r *malgoRecorder) Read() ([]int16, error) {
 }
 
 func (r *malgoRecorder) SetVolume(v float64) {
-	r.volMutex.Lock()
-	defer r.volMutex.Unlock()
+	r.volMux.Lock()
+	defer r.volMux.Unlock()
 	r.volume = v
 }
 
 func (r *malgoRecorder) SetMute(m bool) {
-	r.volMutex.Lock()
-	defer r.volMutex.Unlock()
+	r.volMux.Lock()
+	defer r.volMux.Unlock()
 	r.muted = m
 }

@@ -3,15 +3,14 @@ package audio
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	
 	"github.com/YusufHosny/hum/internal/crypto"
 )
 
 type AudioEnvelope struct {
-	// TODO: use seqnumber as nonce to drop payload size
-	seqNumber *uint32
-	Content   []byte
+	Content []byte
 }
 
 type AudioManager struct {
@@ -65,94 +64,101 @@ func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.C
 	return manager, nil
 }
 
-func (m *AudioManager) Start() error {
-	if err := m.player.Start(); err != nil {
+func (manager *AudioManager) Start() error {
+	if err := manager.player.Start(); err != nil {
 		return fmt.Errorf("failed to start player: %w", err)
 	}
 
-	if err := m.recorder.Start(); err != nil {
+	if err := manager.recorder.Start(); err != nil {
 		return fmt.Errorf("failed to start recorder: %w", err)
 	}
 
-	go m.captureLoop()
-	go m.playbackLoop()
+	go manager.captureLoop()
+	go manager.playbackLoop()
 
 	return nil
 }
 
-func (m *AudioManager) Stop() {
-	m.cancel()
-	m.recorder.Stop()
-	m.player.Stop()
+func (manager *AudioManager) Stop() {
+	manager.cancel()
+	manager.recorder.Stop()
+	manager.player.Stop()
 
-	m.subscribersMux.Lock()
-	for _, sub := range m.subscribers {
+	manager.subscribersMux.Lock()
+	for _, sub := range manager.subscribers {
 		close(sub)
 	}
-	m.subscribers = nil
-	m.subscribersMux.Unlock()
+	manager.subscribers = nil
+	manager.subscribersMux.Unlock()
 }
 
-func (m *AudioManager) captureLoop() {
+func (manager *AudioManager) captureLoop() {
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-manager.ctx.Done():
 			return
 		default:
-			pcm, err := m.recorder.Read()
+			pcm, err := manager.recorder.Read()
 			if err != nil {
+				log.Printf("failed to read mic: %v\n", err)
 				continue
 			}
 
-			encoded, err := m.encoder.Encode(pcm)
+			encoded, err := manager.encoder.Encode(pcm)
 			if err != nil {
+				log.Printf("failed to encode frame: %v\n", err)
 				continue
 			}
 
-			encrypted, err := m.cryptor.Encrypt(encoded, nil)
+			encrypted, err := manager.cryptor.Encrypt(encoded, nil)
 			if err != nil {
+				log.Printf("failed to encrypt frame: %v\n", err)
 				continue
 			}
 
 			envelope := &AudioEnvelope{Content: encrypted}
 
 			select {
-			case m.outbox <- envelope:
+			case manager.outbox <- envelope:
 			default:
 			}
 		}
 	}
 }
 
-func (m *AudioManager) playbackLoop() {
+func (manager *AudioManager) playbackLoop() {
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-manager.ctx.Done():
 			return
-		case received := <-m.inbox:
-			m.broadcast(received)
+		case received := <-manager.inbox:
+			manager.broadcast(received)
 
-			decrypted, err := m.cryptor.Decrypt(received.Content, nil)
+			decrypted, err := manager.cryptor.Decrypt(received.Content, nil)
 			if err != nil {
+				log.Printf("failed to decrypt frame: %v\n", err)
 				continue
 			}
 
-			pcm, err := m.encoder.Decode(decrypted)
+			pcm, err := manager.encoder.Decode(decrypted)
 			if err != nil {
+				log.Printf("failed to decode frame: %v\n", err)
 				continue
 			}
 
-			// TODO: add jitter buffer here before writing to player
-			_ = m.player.Write(pcm)
+			err = manager.player.Write(pcm)
+			if err != nil {
+				log.Printf("failed to play frame: %v\n", err)
+			}
 		}
 	}
 }
 
-func (m *AudioManager) broadcast(ae *AudioEnvelope) {
-	m.subscribersMux.RLock()
-	defer m.subscribersMux.RUnlock()
+func (manager *AudioManager) broadcast(ae *AudioEnvelope) {
+	manager.subscribersMux.RLock()
+	defer manager.subscribersMux.RUnlock()
 
-	for _, sub := range m.subscribers {
+	for _, sub := range manager.subscribers {
 		select {
 		case sub <- ae:
 		default:
@@ -160,43 +166,43 @@ func (m *AudioManager) broadcast(ae *AudioEnvelope) {
 	}
 }
 
-func (m *AudioManager) Subscribe() <-chan *AudioEnvelope {
-	m.subscribersMux.Lock()
-	defer m.subscribersMux.Unlock()
+func (manager *AudioManager) Subscribe() <-chan *AudioEnvelope {
+	manager.subscribersMux.Lock()
+	defer manager.subscribersMux.Unlock()
 
 	ch := make(chan *AudioEnvelope, 100)
-	m.subscribers = append(m.subscribers, ch)
+	manager.subscribers = append(manager.subscribers, ch)
 	return ch
 }
 
-func (m *AudioManager) GetInbox() chan<- *AudioEnvelope {
-	return m.inbox
+func (manager *AudioManager) GetInbox() chan<- *AudioEnvelope {
+	return manager.inbox
 }
 
-func (m *AudioManager) GetOutbox() <-chan *AudioEnvelope {
-	return m.outbox
+func (manager *AudioManager) GetOutbox() <-chan *AudioEnvelope {
+	return manager.outbox
 }
 
 func MakeAudioEnvelope(content []byte) *AudioEnvelope {
 	return &AudioEnvelope{Content: content}
 }
 
-func (m *AudioManager) SetInputVolume(vol float64) {
-	m.recorder.SetVolume(vol)
+func (manager *AudioManager) SetInputVolume(vol float64) {
+	manager.recorder.SetVolume(vol)
 }
 
-func (m *AudioManager) SetOutputVolume(vol float64) {
-	m.player.SetVolume(vol)
+func (manager *AudioManager) SetOutputVolume(vol float64) {
+	manager.player.SetVolume(vol)
 }
 
-func (m *AudioManager) SetMute(muted bool) {
-	m.recorder.SetMute(muted)
+func (manager *AudioManager) SetMute(muted bool) {
+	manager.recorder.SetMute(muted)
 }
 
-func (m *AudioManager) SetDeafen(deafened bool) {
-	m.player.SetDeafen(deafened)
+func (manager *AudioManager) SetDeafen(deafened bool) {
+	manager.player.SetDeafen(deafened)
 }
 
-func (m *AudioManager) SetBitrate(bitrate int) error {
-	return m.encoder.SetBitrate(bitrate)
+func (manager *AudioManager) SetBitrate(bitrate int) error {
+	return manager.encoder.SetBitrate(bitrate)
 }
