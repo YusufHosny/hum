@@ -33,8 +33,7 @@ type MeshConfig struct {
 	Logger             logger.Logger
 }
 
-// manages and orchestrates all communication
-// handles signaling and creating individual member p2p connections
+// orchestrates mesh signaling and peer connections
 type MeshManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -46,7 +45,7 @@ type MeshManager struct {
 	chatPipe  ChatPipe
 	audioPipe AudioPipe
 
-	username    string // self username
+	username    string // local username
 	channelName string
 
 	webrtcConfig webrtc.Configuration
@@ -107,11 +106,11 @@ func (manager *MeshManager) senderLoop() {
 			return
 		case envelope := <-manager.chatPipe.GetOutbox():
 			for _, member := range currentMembers {
-				go member.sendChatEnvelope(envelope) // TODO: retry on errors?
+				go member.sendChatEnvelope(envelope)
 			}
 		case envelope := <-manager.audioPipe.GetOutbox():
 			for _, member := range currentMembers {
-				go member.sendAudioEnvelope(envelope) // TODO: retry on errors?
+				go member.sendAudioEnvelope(envelope)
 			}
 		}
 	}

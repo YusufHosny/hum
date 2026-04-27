@@ -10,8 +10,8 @@ import (
 )
 
 type SignalingMessage struct {
-	Type string `json:"type"` // "offer", "answer", "candidate", "peer-joined", "peer-left", "broadcast", channel-list", "error"
-	From string `json:"from"` // from username attached locally, then checked on signaling server to ensure authenticity
+	Type string `json:"type"`
+	From string `json:"from"`
 	To   string `json:"to"`
 
 	SDP        string   `json:"sdp,omitempty"`
@@ -96,7 +96,7 @@ func (manager *MeshManager) handleWsMessage(messageType int, messageContent []by
 	}
 
 	if msg.From == manager.username {
-		return // ignore own messages
+		return
 	}
 
 	switch msg.Type {

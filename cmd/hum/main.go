@@ -64,7 +64,7 @@ func main() {
 		appLogger.Printf("Failed to save config: %v", err)
 	}
 
-	// wss://worker.dev/<channelName>?usr=<username>
+	// construct signaling url
 	rawURL := fmt.Sprintf("%s/%s?usr=%s", appConfig.SignalingURL, *channelName, username)
 	signalingURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -126,11 +126,11 @@ func main() {
 
 	subChan := chatManager.Subscribe()
 
-	// Handle incoming messages
+	// handle incoming messages
 	go func() {
 		for env := range subChan {
 			if env.Type == "message" {
-				// Print over current line to somewhat handle interleaved typing
+				// handle interleaved typing
 				fmt.Printf("\r\033[K[%s]: %s\n> ", env.From, string(env.Content))
 			}
 		}
@@ -138,7 +138,7 @@ func main() {
 
 	fmt.Println("Peer is running. Type a message and press Enter to send.")
 
-	// Start reading from stdin
+	// read stdin
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
 		fmt.Print("> ")

@@ -45,10 +45,9 @@ func LoadConfig() (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return default config
 			return &AppConfig{
 				Username:       "",
-				SignalingURL:   "wss://hum-signaling.worker.dev", // Replace with an actual default later
+				SignalingURL:   "wss://hum-signaling.worker.dev",
 				STUNServers:    []string{"stun:stun.l.google.com:19302"},
 				InputVolume:    1.0,
 				OutputVolume:   1.0,
@@ -64,7 +63,6 @@ func LoadConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
-	// Apply defaults for any missing fields
 	if len(config.STUNServers) == 0 {
 		config.STUNServers = []string{"stun:stun.l.google.com:19302"}
 	}
@@ -96,7 +94,7 @@ func SaveConfig(config *AppConfig) error {
 }
 
 func AddRecentChannel(config *AppConfig, channelName string) {
-	// Add to front if not exists, max 10 channels
+	// keep max 10 recent channels
 	for i, c := range config.RecentChannels {
 		if c == channelName {
 			config.RecentChannels = append(config.RecentChannels[:i], config.RecentChannels[i+1:]...)

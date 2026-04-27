@@ -101,9 +101,7 @@ func (manager *MeshManager) sendCandidate(member *MeshMember, candidate *webrtc.
 	})
 }
 
-// decides which user will stand down in case of offer collision (politeness)
-// assuming signaling server handles username uniqueness per channel,
-// politness is just alphabetically priority
+// decides which user will stand down in case of offer collision
 func (manager *MeshManager) shouldSendOffer(member *MeshMember) bool {
 	return manager.username < member.username
 }

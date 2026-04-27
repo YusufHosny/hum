@@ -26,7 +26,7 @@ func (member *MeshMember) onTrack(remoteTrack *webrtc.TrackRemote, receiver *web
 	go member.rtpReceiverLoop(remoteTrack)
 }
 
-// handles when a candidate is produced/found by pion locally
+// local ice candidate discovered
 func (member *MeshMember) onICECandidate(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
 		return

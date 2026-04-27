@@ -54,12 +54,6 @@ func (member *MeshMember) rtcpReceiverLoop(rtpReceiver *webrtc.RTPReceiver) {
 func (member *MeshMember) rtpReceiverLoop(remoteTrack *webrtc.TrackRemote) {
 	jb := jitterbuffer.New()
 
-	// Close jitter buffer on exit to prevent goroutine leaks
-	defer func() {
-		// pion jitterbuffer currently doesn't have a Close method,
-		// but stopping the pushes will eventually cause Pop to fail or we handle it via context.
-	}()
-
 	go func() {
 		for {
 			if member.ctx.Err() != nil {
@@ -93,7 +87,6 @@ func (member *MeshMember) rtpReceiverLoop(remoteTrack *webrtc.TrackRemote) {
 }
 
 func (member *MeshMember) sendAudioEnvelope(ae *audio.AudioEnvelope) {
-	// 20ms duration for Opus frames
 	err := member.sendTrack.WriteSample(media.Sample{Data: ae.Content, Duration: 20 * time.Millisecond})
 	if err != nil {
 		member.meshContext.Logger().Printf("Failed to send audio packet: %v", err)

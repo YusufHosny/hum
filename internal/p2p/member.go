@@ -10,7 +10,6 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// ---------------  types ---------------
 type MeshContext interface {
 	removeMember(member *MeshMember)
 
@@ -24,8 +23,7 @@ type MeshContext interface {
 	Logger() logger.Logger
 }
 
-// a single p2p connection to another user
-// handles sending SDP/ICE, politeness, and communication
+// single p2p peer connection
 type MeshMember struct {
 	meshContext MeshContext
 	ctx         context.Context
@@ -48,8 +46,6 @@ type MeshMember struct {
 	done      chan struct{}
 	closeOnce sync.Once
 }
-
-// ---------------  functions ---------------
 
 func (member *MeshMember) Close() error {
 	member.closeOnce.Do(func() {
