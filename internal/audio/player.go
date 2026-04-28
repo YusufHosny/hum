@@ -3,6 +3,7 @@ package audio
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/gen2brain/malgo"
@@ -71,10 +72,7 @@ func (p *malgoPlayer) Start() error {
 			bufMux.Lock()
 
 			availableSamples := len(buffer)
-			samplesToRead := requestedSamples
-			if availableSamples < requestedSamples {
-				samplesToRead = availableSamples
-			}
+			samplesToRead := min(requestedSamples, availableSamples)
 
 			samples := make([]int16, requestedSamples)
 			if samplesToRead > 0 {
@@ -94,17 +92,16 @@ func (p *malgoPlayer) Start() error {
 				}
 			} else if vol != 1.0 {
 				for i := range samples {
-					val := float64(samples[i]) * vol
-					if val > 32767 {
-						val = 32767
-					} else if val < -32768 {
-						val = -32768
-					}
+					val := clamp(
+						float64(samples[i])*vol,
+						math.MinInt16,
+						math.MaxInt16,
+					)
 					samples[i] = int16(val)
 				}
 			}
 
-			for i := 0; i < len(samples); i++ {
+			for i := range samples {
 				pOutputSample[i*2] = byte(samples[i])
 				pOutputSample[i*2+1] = byte(samples[i] >> 8)
 			}
