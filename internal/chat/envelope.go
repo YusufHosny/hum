@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// ----------------- types -----------------
-
 type ChatEnvelope struct {
 	Type      string // "message", "metadata"
 	From      string
@@ -26,8 +24,6 @@ type metadataPayload struct {
 	Muted    bool `json:"muted,omitempty"`
 	Deafened bool `json:"deafened,omitempty"`
 }
-
-// ----------------- message factory -----------------
 
 func newMessageEnvelope(from string, content []byte) *ChatEnvelope {
 	return &ChatEnvelope{
@@ -57,8 +53,6 @@ func NewRecvEnvelope(msgType string, from string, content []byte) (*ChatEnvelope
 	}
 	return envelope, nil
 }
-
-// ----------------- metadata factory -----------------
 
 func newMetadataEnvelope(from string, content []byte) *ChatEnvelope {
 	return &ChatEnvelope{

@@ -23,13 +23,12 @@ type MeshContext interface {
 	Logger() logger.Logger
 }
 
-// single p2p peer connection
 type MeshMember struct {
 	meshContext MeshContext
 	ctx         context.Context
 	cancel      context.CancelFunc
 
-	username   string // peer username
+	username   string
 	connection *webrtc.PeerConnection
 
 	dataChannelsMux sync.Mutex

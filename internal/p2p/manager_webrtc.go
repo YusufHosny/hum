@@ -2,21 +2,21 @@ package p2p
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
 
 func (manager *MeshManager) initWebRTC(stunServers []string) error {
-	urls := []string{"stun:stun.l.google.com:19302"}
-	if len(stunServers) > 0 {
-		urls = stunServers
+	if len(stunServers) <= 0 {
+		return errors.New("No STUN servers were provided")
 	}
 
 	manager.webrtcConfig = webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
-				URLs: urls,
+				URLs: stunServers,
 			},
 		},
 	}
@@ -101,7 +101,6 @@ func (manager *MeshManager) sendCandidate(member *MeshMember, candidate *webrtc.
 	})
 }
 
-// decides which user will stand down in case of offer collision
 func (manager *MeshManager) shouldSendOffer(member *MeshMember) bool {
 	return manager.username < member.username
 }

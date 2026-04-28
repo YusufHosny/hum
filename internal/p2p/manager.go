@@ -33,7 +33,6 @@ type MeshConfig struct {
 	Logger             logger.Logger
 }
 
-// orchestrates mesh signaling and peer connections
 type MeshManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
