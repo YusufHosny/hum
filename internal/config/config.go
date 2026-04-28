@@ -6,6 +6,13 @@ import (
 	"path/filepath"
 )
 
+const (
+	GoogleSTUNServer   = "wss://hum-signaling.worker.dev"
+	LocalhostWorkerURL = "stun:stun.l.google.com:19302"
+
+	MaxRecentChannels = 10
+)
+
 type AppConfig struct {
 	Username       string   `json:"username"`
 	SignalingURL   string   `json:"signalingUrl"`
@@ -47,8 +54,8 @@ func LoadConfig() (*AppConfig, error) {
 		if os.IsNotExist(err) {
 			return &AppConfig{
 				Username:       "",
-				SignalingURL:   "wss://hum-signaling.worker.dev",
-				STUNServers:    []string{"stun:stun.l.google.com:19302"},
+				SignalingURL:   LocalhostWorkerURL,
+				STUNServers:    []string{GoogleSTUNServer},
 				InputVolume:    1.0,
 				OutputVolume:   1.0,
 				RecentChannels: []string{},
@@ -64,10 +71,10 @@ func LoadConfig() (*AppConfig, error) {
 	}
 
 	if len(config.STUNServers) == 0 {
-		config.STUNServers = []string{"stun:stun.l.google.com:19302"}
+		config.STUNServers = []string{GoogleSTUNServer}
 	}
 	if config.SignalingURL == "" {
-		config.SignalingURL = "wss://hum-signaling.worker.dev"
+		config.SignalingURL = LocalhostWorkerURL
 	}
 	if config.InputVolume == 0 {
 		config.InputVolume = 1.0
@@ -94,7 +101,6 @@ func SaveConfig(config *AppConfig) error {
 }
 
 func AddRecentChannel(config *AppConfig, channelName string) {
-	// keep max 10 recent channels
 	for i, c := range config.RecentChannels {
 		if c == channelName {
 			config.RecentChannels = append(config.RecentChannels[:i], config.RecentChannels[i+1:]...)
@@ -102,7 +108,7 @@ func AddRecentChannel(config *AppConfig, channelName string) {
 		}
 	}
 	config.RecentChannels = append([]string{channelName}, config.RecentChannels...)
-	if len(config.RecentChannels) > 10 {
-		config.RecentChannels = config.RecentChannels[:10]
+	if len(config.RecentChannels) > MaxRecentChannels {
+		config.RecentChannels = config.RecentChannels[:MaxRecentChannels]
 	}
 }
