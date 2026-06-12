@@ -14,7 +14,7 @@ type ChatEnvelope struct {
 }
 
 type metadataPayload struct {
-	Type string `json:"type"` // "typing", "join", "audio"
+	Type string `json:"type"` // "typing", "join", "audio", "speaking"
 
 	// join event
 	Chat bool `json:"chat,omitempty"`
@@ -23,6 +23,9 @@ type metadataPayload struct {
 	// audio event
 	Muted    bool `json:"muted,omitempty"`
 	Deafened bool `json:"deafened,omitempty"`
+
+	// speaking event
+	Speaking bool `json:"speaking,omitempty"`
 }
 
 func newMessageEnvelope(from string, content []byte) *ChatEnvelope {
@@ -90,6 +93,18 @@ func newAudioMetadataEnvelope(from string, muted bool, deafened bool) *ChatEnvel
 		Type:     "audio",
 		Muted:    muted,
 		Deafened: deafened,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return newMetadataEnvelope(from, payload)
+}
+
+func newSpeakingMetadataEnvelope(from string, speaking bool) *ChatEnvelope {
+	payload, err := json.Marshal(metadataPayload{
+		Type:     "speaking",
+		Speaking: speaking,
 	})
 	if err != nil {
 		panic(err)

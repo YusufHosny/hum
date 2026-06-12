@@ -15,8 +15,9 @@ type AudioConfig struct {
 	FrameDuration time.Duration
 	Bitrate       int
 
-	InputVolume  float64
-	OutputVolume float64
+	InputVolume    float64
+	OutputVolume   float64
+	VoiceThreshold float64
 
 	Muted    bool
 	Deafened bool
@@ -29,13 +30,14 @@ func (c *AudioConfig) FrameSize() int {
 
 func NewDefaultAudioConfig() *AudioConfig {
 	return &AudioConfig{
-		SampleRate:    DefaultSampleRate,
-		Channels:      DefaultChannels,
-		FrameDuration: DefaultFrameDuration,
-		Bitrate:       DefaultBitrate,
-		InputVolume:   1.0,
-		OutputVolume:  1.0,
-		Muted:         false,
-		Deafened:      false,
+		SampleRate:     DefaultSampleRate,
+		Channels:       DefaultChannels,
+		FrameDuration:  DefaultFrameDuration,
+		Bitrate:        DefaultBitrate,
+		InputVolume:    1.0,
+		OutputVolume:   1.0,
+		VoiceThreshold: 0.05,
+		Muted:          false,
+		Deafened:       false,
 	}
 }

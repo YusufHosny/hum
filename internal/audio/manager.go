@@ -17,6 +17,10 @@ type AudioManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	callCtx    context.Context
+	callCancel context.CancelFunc
+	callMux    sync.Mutex
+
 	config  *AudioConfig
 	cryptor *crypto.Cryptor
 
@@ -29,6 +33,9 @@ type AudioManager struct {
 
 	subscribersMux sync.RWMutex
 	subscribers    []chan *AudioEnvelope
+
+	OnSpeaking func(bool)
+	isSpeaking bool
 }
 
 func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.Cryptor) (*AudioManager, error) {
@@ -42,6 +49,7 @@ func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.C
 		inbox:       make(chan *AudioEnvelope, 100),
 		outbox:      make(chan *AudioEnvelope, 100),
 		subscribers: make([]chan *AudioEnvelope, 0),
+		OnSpeaking:  func(bool) {},
 	}
 
 	var err error
@@ -64,25 +72,54 @@ func NewAudioManager(ctx context.Context, config *AudioConfig, cryptor *crypto.C
 	return manager, nil
 }
 
-func (manager *AudioManager) Start() error {
+func (manager *AudioManager) JoinCall() error {
+	manager.callMux.Lock()
+	defer manager.callMux.Unlock()
+
+	if manager.callCtx != nil {
+		return nil // already in call
+	}
+
+	callCtx, callCancel := context.WithCancel(manager.ctx)
+	manager.callCtx = callCtx
+	manager.callCancel = callCancel
+
 	if err := manager.player.Start(); err != nil {
+		manager.callCancel()
+		manager.callCtx = nil
 		return fmt.Errorf("failed to start player: %w", err)
 	}
 
 	if err := manager.recorder.Start(); err != nil {
+		manager.player.Stop()
+		manager.callCancel()
+		manager.callCtx = nil
 		return fmt.Errorf("failed to start recorder: %w", err)
 	}
 
-	go manager.captureLoop()
-	go manager.playbackLoop()
+	go manager.captureLoop(callCtx)
+	go manager.playbackLoop(callCtx)
 
 	return nil
 }
 
-func (manager *AudioManager) Stop() {
+func (manager *AudioManager) LeaveCall() {
+	manager.callMux.Lock()
+	defer manager.callMux.Unlock()
+
+	if manager.callCtx != nil {
+		manager.callCancel()
+		manager.callCtx = nil
+		manager.callCancel = nil
+		
+		manager.recorder.Stop()
+		manager.player.Stop()
+	}
+}
+
+func (manager *AudioManager) Close() {
+	manager.LeaveCall()
 	manager.cancel()
-	manager.recorder.Stop()
-	manager.player.Stop()
 
 	manager.subscribersMux.Lock()
 	for _, sub := range manager.subscribers {
@@ -92,15 +129,33 @@ func (manager *AudioManager) Stop() {
 	manager.subscribersMux.Unlock()
 }
 
-func (manager *AudioManager) captureLoop() {
+func (manager *AudioManager) captureLoop(callCtx context.Context) {
 	for {
 		select {
-		case <-manager.ctx.Done():
+		case <-callCtx.Done():
 			return
 		default:
 			pcm, err := manager.recorder.Read()
 			if err != nil {
 				log.Printf("failed to read mic: %v\n", err)
+				continue
+			}
+
+			if manager.config.Muted {
+				if manager.isSpeaking {
+					manager.isSpeaking = false
+					manager.OnSpeaking(false)
+				}
+				continue
+			}
+
+			isAboveThreshold := IsAboveThreshold(pcm, manager.config.VoiceThreshold)
+			if isAboveThreshold != manager.isSpeaking {
+				manager.isSpeaking = isAboveThreshold
+				manager.OnSpeaking(isAboveThreshold)
+			}
+
+			if !isAboveThreshold {
 				continue
 			}
 
@@ -126,13 +181,20 @@ func (manager *AudioManager) captureLoop() {
 	}
 }
 
-func (manager *AudioManager) playbackLoop() {
+func (manager *AudioManager) playbackLoop(callCtx context.Context) {
 	for {
 		select {
+		case <-callCtx.Done():
+			return
 		case <-manager.ctx.Done():
 			return
 		case received := <-manager.inbox:
+			// only broadcast to subscribers if they need to analyze the incoming audio
 			manager.broadcast(received)
+
+			if manager.config.Deafened {
+				continue
+			}
 
 			decrypted, err := manager.cryptor.Decrypt(received.Content, nil)
 			if err != nil {
@@ -188,19 +250,31 @@ func MakeAudioEnvelope(content []byte) *AudioEnvelope {
 }
 
 func (manager *AudioManager) SetInputVolume(vol float64) {
+	manager.config.InputVolume = vol
 	manager.recorder.SetVolume(vol)
 }
 
 func (manager *AudioManager) SetOutputVolume(vol float64) {
+	manager.config.OutputVolume = vol
 	manager.player.SetVolume(vol)
 }
 
 func (manager *AudioManager) SetMute(muted bool) {
+	manager.config.Muted = muted
 	manager.recorder.SetMute(muted)
 }
 
 func (manager *AudioManager) SetDeafen(deafened bool) {
+	manager.config.Deafened = deafened
 	manager.player.SetDeafen(deafened)
+}
+
+func (manager *AudioManager) IsMuted() bool {
+	return manager.config.Muted
+}
+
+func (manager *AudioManager) IsDeafened() bool {
+	return manager.config.Deafened
 }
 
 func (manager *AudioManager) SetBitrate(bitrate int) error {

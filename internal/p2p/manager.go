@@ -55,6 +55,9 @@ type MeshManager struct {
 	closeOnce  sync.Once
 
 	logger logger.Logger
+
+	OnMemberJoin  func(username string)
+	OnMemberLeave func(username string)
 }
 
 func NewMeshManager(
@@ -77,6 +80,8 @@ func NewMeshManager(
 		channelName: config.ChannelName,
 		members:     make([]*MeshMember, 0),
 		logger:      config.Logger,
+		OnMemberJoin:  func(string) {},
+		OnMemberLeave: func(string) {},
 	}
 	err := manager.initWebRTC(config.STUNServers)
 	if err != nil {
@@ -140,6 +145,8 @@ func (manager *MeshManager) newMember(username string) (*MeshMember, error) {
 	manager.members = append(manager.members, member)
 	manager.membersMux.Unlock()
 
+	manager.OnMemberJoin(username)
+
 	err = member.initWebRTC()
 	if err != nil {
 		manager.logger.Printf("Failed to initialize webrtc: %v\n", err)
@@ -201,6 +208,7 @@ func (manager *MeshManager) removeMember(member *MeshMember) {
 
 	if idx := slices.Index(manager.members, member); idx != -1 {
 		manager.members = slices.Delete(manager.members, idx, idx+1)
+		manager.OnMemberLeave(member.username)
 	}
 }
 

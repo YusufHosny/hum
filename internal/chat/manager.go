@@ -125,6 +125,11 @@ func (manager *ChatManager) NotifyAudio(muted bool, deafened bool) error {
 	return manager.encryptAndSend(envelope)
 }
 
+func (manager *ChatManager) NotifySpeaking(speaking bool) error {
+	envelope := newSpeakingMetadataEnvelope(manager.username, speaking)
+	return manager.encryptAndSend(envelope)
+}
+
 func (manager *ChatManager) GetHistory() []*ChatEnvelope {
 	manager.historyMux.RLock()
 	defer manager.historyMux.Unlock()

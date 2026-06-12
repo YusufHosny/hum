@@ -19,6 +19,7 @@ type AppConfig struct {
 	STUNServers    []string `json:"stunServers"`
 	InputVolume    float64  `json:"inputVolume"`
 	OutputVolume   float64  `json:"outputVolume"`
+	VoiceThreshold float64  `json:"voiceThreshold"`
 	RecentChannels []string `json:"recentChannels"`
 }
 
@@ -58,6 +59,7 @@ func LoadConfig() (*AppConfig, error) {
 				STUNServers:    []string{GoogleSTUNServer},
 				InputVolume:    1.0,
 				OutputVolume:   1.0,
+				VoiceThreshold: 0.05,
 				RecentChannels: []string{},
 			}, nil
 		}
@@ -81,6 +83,9 @@ func LoadConfig() (*AppConfig, error) {
 	}
 	if config.OutputVolume == 0 {
 		config.OutputVolume = 1.0
+	}
+	if config.VoiceThreshold == 0 {
+		config.VoiceThreshold = 0.05
 	}
 
 	return &config, nil
