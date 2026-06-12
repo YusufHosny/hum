@@ -50,6 +50,12 @@ func NewChatManager(
 				manager.subscribersMux.Unlock()
 				return
 			case received := <-manager.inbox:
+				decrypted, err := manager.cryptor.Decrypt(received.Content, nil)
+				if err != nil {
+					continue
+				}
+				received.Content = decrypted
+
 				manager.addToHistory(received)
 				manager.broadcast(received)
 			}
@@ -99,9 +105,19 @@ func (manager *ChatManager) encryptAndSend(ce *ChatEnvelope) error {
 	if err != nil {
 		return err
 	}
+
 	manager.addToHistory(ce)
-	ce.Content = encrypted
-	manager.outbox <- ce
+	if ce.Type == "message" {
+		manager.broadcast(ce)
+	}
+
+	// Send a separate encrypted copy so we don't clobber the plaintext ce.
+	manager.outbox <- &ChatEnvelope{
+		Type:      ce.Type,
+		From:      ce.From,
+		Content:   encrypted,
+		CreatedAt: ce.CreatedAt,
+	}
 	return nil
 }
 
