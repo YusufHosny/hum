@@ -46,7 +46,7 @@ func NewSettingsModel(appConfig *config.AppConfig) SettingsModel {
 		case 4:
 			t.Placeholder = "Output Volume (0.0-1.0)"
 		case 5:
-			t.Placeholder = "Voice Threshold (RMS ~0.05)"
+			t.Placeholder = "Voice Sensitivity (1-100)"
 		}
 
 		m.inputs[i] = t
@@ -168,7 +168,7 @@ func (m SettingsModel) View() string {
 		"STUN Servers",
 		"Input Volume",
 		"Output Volume",
-		"Voice Threshold",
+		"Voice Sensitivity",
 	}
 
 	for i := range m.inputs {

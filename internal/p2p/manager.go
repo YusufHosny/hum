@@ -100,9 +100,8 @@ func NewMeshManager(
 }
 
 func (manager *MeshManager) senderLoop() {
-	// Snapshot the member list when a message is ready to send, not before
-	// blocking — otherwise a peer that joins while we're parked in the select
-	// misses the next message (e.g. the first join-call notification).
+	// Snapshot members per-message, not before the select — else a peer that
+	// joins while we're parked misses the next message.
 	members := func() []*MeshMember {
 		manager.membersMux.Lock()
 		defer manager.membersMux.Unlock()

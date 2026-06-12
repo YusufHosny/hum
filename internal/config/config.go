@@ -59,7 +59,7 @@ func LoadConfig() (*AppConfig, error) {
 				STUNServers:    []string{DefaultSTUNServer},
 				InputVolume:    1.0,
 				OutputVolume:   1.0,
-				VoiceThreshold: 50,
+				VoiceThreshold: 10,
 				RecentChannels: []string{},
 			}, nil
 		}
@@ -85,7 +85,7 @@ func LoadConfig() (*AppConfig, error) {
 		config.OutputVolume = 1.0
 	}
 	if config.VoiceThreshold == 0 {
-		config.VoiceThreshold = 50
+		config.VoiceThreshold = 10
 	}
 
 	return &config, nil

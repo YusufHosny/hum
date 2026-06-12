@@ -39,8 +39,7 @@ func NewMalgoRecorder(ctx context.Context, config *AudioConfig) (AudioRecorder, 
 }
 
 func (r *malgoRecorder) Start() error {
-	// Stop() frees the context and closes the channel; recreate them so the
-	// recorder can be restarted across JoinCall/LeaveCall cycles.
+	// Stop() frees the context and closes the channel; recreate so calls can cycle.
 	if r.malgoCtx == nil {
 		malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(string) {})
 		if err != nil {

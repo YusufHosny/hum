@@ -20,6 +20,7 @@ type AudioManager struct {
 	callCtx    context.Context
 	callCancel context.CancelFunc
 	callMux    sync.Mutex
+	callWg     sync.WaitGroup
 
 	config  *AudioConfig
 	cryptor *crypto.Cryptor
@@ -97,8 +98,9 @@ func (manager *AudioManager) JoinCall() error {
 		return fmt.Errorf("failed to start recorder: %w", err)
 	}
 
-	go manager.captureLoop(callCtx)
-	go manager.playbackLoop(callCtx)
+	manager.callWg.Add(2)
+	go func() { defer manager.callWg.Done(); manager.captureLoop(callCtx) }()
+	go func() { defer manager.callWg.Done(); manager.playbackLoop(callCtx) }()
 
 	return nil
 }
@@ -109,11 +111,14 @@ func (manager *AudioManager) LeaveCall() {
 
 	if manager.callCtx != nil {
 		manager.callCancel()
+		// Stop recorder first (closing outChan unblocks captureLoop's Read),
+		// wait for both loops, then close the player — playbackLoop sends to its
+		// channel, so closing it mid-loop would panic.
+		manager.recorder.Stop()
+		manager.callWg.Wait()
+		manager.player.Stop()
 		manager.callCtx = nil
 		manager.callCancel = nil
-		
-		manager.recorder.Stop()
-		manager.player.Stop()
 	}
 }
 

@@ -39,9 +39,7 @@ func NewMalgoPlayer(ctx context.Context, config *AudioConfig) (AudioPlayer, erro
 }
 
 func (p *malgoPlayer) Start() error {
-	// Stop() frees the context and closes the channel, so a JoinCall after a
-	// LeaveCall (or a retry after a failed start) lands here with them gone.
-	// Recreate both so Start/Stop can cycle.
+	// Stop() frees the context and closes the channel; recreate so calls can cycle.
 	if p.malgoCtx == nil {
 		malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(string) {})
 		if err != nil {
