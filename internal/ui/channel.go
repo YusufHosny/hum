@@ -95,7 +95,7 @@ func (m *ChannelModel) Reset(channelName string) {
 	m.deafened = false
 	m.focusIndex = 4
 	m.typingUsers = make(map[string]time.Time)
-	
+
 	m.vp.SetContent("Joined " + channelName)
 	m.vp.GotoBottom()
 }
@@ -112,9 +112,10 @@ func (m *ChannelModel) Resize(w, h int) {
 
 	m.input.Width = centerWidth - 4
 	m.vp.Width = centerWidth
-	
-	// Total height minus header (1) and footer (3)
-	m.vp.Height = h - 4
+
+	// Total height minus header (3: buttons, padding, border) and footer
+	// (3: typing line + bordered input).
+	m.vp.Height = h - 6
 }
 
 func (m ChannelModel) Update(msg tea.Msg) (ChannelModel, tea.Cmd) {
@@ -162,7 +163,12 @@ func (m ChannelModel) Update(msg tea.Msg) (ChannelModel, tea.Cmd) {
 			} else if m.focusIndex == 1 { // call
 				m.inCall = !m.inCall
 				if m.inCall {
-					_ = m.client.JoinCall()
+					if err := m.client.JoinCall(); err != nil {
+						m.inCall = false
+						m.messages = append(m.messages, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Could not join call: "+err.Error()))
+						m.vp.SetContent(strings.Join(m.messages, "\n"))
+						m.vp.GotoBottom()
+					}
 				} else {
 					m.client.LeaveCall()
 				}
@@ -250,12 +256,18 @@ func (m ChannelModel) View() string {
 	activeStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("10")) // green
 
 	renderBtn := func(idx int, text string, active bool) string {
-		if m.focusIndex == idx {
+		focused := m.focusIndex == idx
+		switch {
+		case focused && active:
+			// Show both: green "active" with a bold/underline focus cue.
+			return activeStyle.Bold(true).Underline(true).Render("[" + text + "]")
+		case focused:
 			return focusStyle.Render("[" + text + "]")
-		} else if active {
+		case active:
 			return activeStyle.Render("[" + text + "]")
+		default:
+			return btnStyle.Render("[" + text + "]")
 		}
-		return btnStyle.Render("[" + text + "]")
 	}
 
 	leaveBtn := renderBtn(0, "Leave Chat (Esc)", false)
@@ -265,7 +277,7 @@ func (m ChannelModel) View() string {
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top, leaveBtn, " | ", callBtn, " ", muteBtn, " ", deafenBtn)
 	headerStyle := lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, true, false).PaddingBottom(1)
-	
+
 	// Left Sidebar (placeholder for now)
 	leftSidebar := lipgloss.NewStyle().
 		Width(m.sidebarWidth).
@@ -286,7 +298,7 @@ func (m ChannelModel) View() string {
 		} else if p.Muted {
 			stateStr += " 🔇"
 		}
-		
+
 		name := p.Username
 		if p.Speaking {
 			name = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(name)

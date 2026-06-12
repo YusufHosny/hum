@@ -72,11 +72,11 @@ func (member *MeshMember) rtpReceiverLoop(remoteTrack *webrtc.TrackRemote) {
 			if member.ctx.Err() != nil {
 				return
 			}
+			// Pop returns ErrPopWhileBuffering until the jitter buffer has
+			// filled (~50 packets), and underruns once drained. Both are
+			// transient — retry rather than killing the loop.
 			rtpPacket, err := jb.Pop()
-			if err != nil {
-				return
-			}
-			if rtpPacket == nil {
+			if err != nil || rtpPacket == nil {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}

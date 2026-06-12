@@ -85,7 +85,7 @@ func (c *Client) Connect(channelName, passkey string) error {
 	audioConfig := audio.NewDefaultAudioConfig()
 	audioConfig.InputVolume = c.Config.InputVolume
 	audioConfig.OutputVolume = c.Config.OutputVolume
-	audioConfig.VoiceThreshold = c.Config.VoiceThreshold
+	audioConfig.VoiceThreshold = audio.VoiceKnobToRMS(c.Config.VoiceThreshold)
 
 	c.AudioManager, err = audio.NewAudioManager(c.ctx, audioConfig, cryptor)
 	if err != nil {

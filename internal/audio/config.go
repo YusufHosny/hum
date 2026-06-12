@@ -36,7 +36,7 @@ func NewDefaultAudioConfig() *AudioConfig {
 		Bitrate:        DefaultBitrate,
 		InputVolume:    1.0,
 		OutputVolume:   1.0,
-		VoiceThreshold: 0.05,
+		VoiceThreshold: VoiceKnobToRMS(50),
 		Muted:          false,
 		Deafened:       false,
 	}

@@ -100,20 +100,25 @@ func NewMeshManager(
 }
 
 func (manager *MeshManager) senderLoop() {
-	for {
+	// Snapshot the member list when a message is ready to send, not before
+	// blocking — otherwise a peer that joins while we're parked in the select
+	// misses the next message (e.g. the first join-call notification).
+	members := func() []*MeshMember {
 		manager.membersMux.Lock()
-		currentMembers := slices.Clone(manager.members)
-		manager.membersMux.Unlock()
+		defer manager.membersMux.Unlock()
+		return slices.Clone(manager.members)
+	}
 
+	for {
 		select {
 		case <-manager.ctx.Done():
 			return
 		case envelope := <-manager.chatPipe.GetOutbox():
-			for _, member := range currentMembers {
+			for _, member := range members() {
 				go member.sendChatEnvelope(envelope)
 			}
 		case envelope := <-manager.audioPipe.GetOutbox():
-			for _, member := range currentMembers {
+			for _, member := range members() {
 				go member.sendAudioEnvelope(envelope)
 			}
 		}

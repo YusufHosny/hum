@@ -27,5 +27,10 @@ func New(logFilePath string) *AppLogger {
 	}
 
 	stdLogger := log.New(l, "", log.LstdFlags|log.Lshortfile)
+
+	// Redirect the standard logger to the file too, so stray log.Print calls
+	// (e.g. from the audio loops) don't bleed into the alt-screen TUI on stderr.
+	log.SetOutput(l)
+
 	return &AppLogger{Logger: stdLogger}
 }

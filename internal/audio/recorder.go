@@ -39,6 +39,17 @@ func NewMalgoRecorder(ctx context.Context, config *AudioConfig) (AudioRecorder, 
 }
 
 func (r *malgoRecorder) Start() error {
+	// Stop() frees the context and closes the channel; recreate them so the
+	// recorder can be restarted across JoinCall/LeaveCall cycles.
+	if r.malgoCtx == nil {
+		malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(string) {})
+		if err != nil {
+			return fmt.Errorf("failed to init malgo context: %w", err)
+		}
+		r.malgoCtx = malgoCtx
+	}
+	r.outChan = make(chan []int16, 10)
+
 	deviceConfig := malgo.DefaultDeviceConfig(malgo.Capture)
 	deviceConfig.Capture.Format = malgo.FormatS16
 	deviceConfig.Capture.Channels = uint32(r.config.Channels)

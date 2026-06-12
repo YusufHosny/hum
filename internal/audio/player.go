@@ -39,6 +39,18 @@ func NewMalgoPlayer(ctx context.Context, config *AudioConfig) (AudioPlayer, erro
 }
 
 func (p *malgoPlayer) Start() error {
+	// Stop() frees the context and closes the channel, so a JoinCall after a
+	// LeaveCall (or a retry after a failed start) lands here with them gone.
+	// Recreate both so Start/Stop can cycle.
+	if p.malgoCtx == nil {
+		malgoCtx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(string) {})
+		if err != nil {
+			return fmt.Errorf("failed to init malgo context: %w", err)
+		}
+		p.malgoCtx = malgoCtx
+	}
+	p.inChan = make(chan []int16, 50)
+
 	deviceConfig := malgo.DefaultDeviceConfig(malgo.Playback)
 	deviceConfig.Playback.Format = malgo.FormatS16
 	deviceConfig.Playback.Channels = uint32(p.config.Channels)
@@ -48,12 +60,13 @@ func (p *malgoPlayer) Start() error {
 	var buffer []int16
 	var bufMux sync.Mutex
 
+	inChan := p.inChan
 	go func() {
 		for {
 			select {
 			case <-p.ctx.Done():
 				return
-			case frame, ok := <-p.inChan:
+			case frame, ok := <-inChan:
 				if !ok {
 					return
 				}
