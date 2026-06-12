@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	GoogleSTUNServer   = "wss://hum-signaling.worker.dev"
-	LocalhostWorkerURL = "stun:stun.l.google.com:19302"
+	DefaultSignalingURL = "wss://hum-signaling-worker.yusufyy2004.workers.dev"
+	DefaultSTUNServer   = "stun:stun.l.google.com:19302"
 
 	MaxRecentChannels = 10
 )
@@ -55,11 +55,11 @@ func LoadConfig() (*AppConfig, error) {
 		if os.IsNotExist(err) {
 			return &AppConfig{
 				Username:       "",
-				SignalingURL:   LocalhostWorkerURL,
-				STUNServers:    []string{GoogleSTUNServer},
+				SignalingURL:   DefaultSignalingURL,
+				STUNServers:    []string{DefaultSTUNServer},
 				InputVolume:    1.0,
 				OutputVolume:   1.0,
-				VoiceThreshold: 0.05,
+				VoiceThreshold: 50,
 				RecentChannels: []string{},
 			}, nil
 		}
@@ -73,10 +73,10 @@ func LoadConfig() (*AppConfig, error) {
 	}
 
 	if len(config.STUNServers) == 0 {
-		config.STUNServers = []string{GoogleSTUNServer}
+		config.STUNServers = []string{DefaultSTUNServer}
 	}
 	if config.SignalingURL == "" {
-		config.SignalingURL = LocalhostWorkerURL
+		config.SignalingURL = DefaultSignalingURL
 	}
 	if config.InputVolume == 0 {
 		config.InputVolume = 1.0
@@ -85,7 +85,7 @@ func LoadConfig() (*AppConfig, error) {
 		config.OutputVolume = 1.0
 	}
 	if config.VoiceThreshold == 0 {
-		config.VoiceThreshold = 0.05
+		config.VoiceThreshold = 50
 	}
 
 	return &config, nil
